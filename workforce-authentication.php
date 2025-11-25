@@ -84,6 +84,21 @@ class Workforce_Authentication {
 
         // Fire action for apps to register permissions
         add_action('init', array($this, 'register_permissions_hook'), 5);
+
+        // Check and update database if needed
+        add_action('plugins_loaded', array($this, 'check_database_version'));
+    }
+
+    /**
+     * Check database version and update if needed.
+     */
+    public function check_database_version() {
+        $current_version = get_option('wfa_db_version', '0');
+
+        if (version_compare($current_version, WFA_VERSION, '<')) {
+            require_once WFA_PLUGIN_DIR . 'includes/class-wfa-activator.php';
+            WFA_Activator::activate();
+        }
     }
 
     /**

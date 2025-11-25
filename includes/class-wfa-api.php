@@ -70,7 +70,7 @@ class WFA_API {
      * @param array  $data     Request data.
      * @return array|WP_Error
      */
-    private function request($endpoint, $method = 'GET', $data = array()) {
+    public function request($endpoint, $method = 'GET', $data = array()) {
         if (empty($this->token)) {
             return new WP_Error('no_token', 'No access token configured');
         }
