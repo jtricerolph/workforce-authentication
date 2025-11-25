@@ -1,0 +1,87 @@
+<?php
+/**
+ * Plugin Name: Workforce Authentication
+ * Plugin URI: https://github.com/JTR/workforce-authentication
+ * Description: Integrates Workforce (Tanda) HR system for employee authentication and permissions management.
+ * Version: 1.0.0
+ * Author: JTR
+ * License: GPL-2.0+
+ * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
+ * Text Domain: workforce-auth
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+define('WFA_VERSION', '1.0.0');
+define('WFA_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('WFA_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('WFA_TABLE_PREFIX', 'workforce_');
+
+/**
+ * Activation hook.
+ */
+function wfa_activate() {
+    require_once WFA_PLUGIN_DIR . 'includes/class-wfa-activator.php';
+    WFA_Activator::activate();
+}
+register_activation_hook(__FILE__, 'wfa_activate');
+
+/**
+ * Deactivation hook.
+ */
+function wfa_deactivate() {
+    require_once WFA_PLUGIN_DIR . 'includes/class-wfa-activator.php';
+    WFA_Activator::deactivate();
+}
+register_deactivation_hook(__FILE__, 'wfa_deactivate');
+
+/**
+ * Load plugin classes.
+ */
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-activator.php';
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-api.php';
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-sync.php';
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-admin.php';
+
+/**
+ * Main plugin class.
+ */
+class Workforce_Authentication {
+
+    private static $instance = null;
+    public $api;
+    public $sync;
+    public $admin;
+
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    private function __construct() {
+        $this->api = new WFA_API();
+        $this->sync = new WFA_Sync($this->api);
+        $this->admin = new WFA_Admin($this->api, $this->sync);
+
+        add_action('plugins_loaded', array($this, 'init'));
+    }
+
+    public function init() {
+        load_plugin_textdomain('workforce-auth', false, dirname(plugin_basename(__FILE__)) . '/languages');
+    }
+}
+
+/**
+ * Initialize plugin.
+ */
+function wfa() {
+    return Workforce_Authentication::get_instance();
+}
+
+wfa();

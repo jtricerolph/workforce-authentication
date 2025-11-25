@@ -1,0 +1,99 @@
+.wfa-setup-page {
+    max-width: 900px;
+}
+
+.wfa-steps {
+    display: flex;
+    justify-content: space-between;
+    margin: 30px 0;
+    padding: 0;
+}
+
+.wfa-step {
+    flex: 1;
+    text-align: center;
+    padding: 20px;
+    background: #f5f5f5;
+    border: 2px solid #ddd;
+    margin-right: 10px;
+    border-radius: 4px;
+}
+
+.wfa-step:last-child {
+    margin-right: 0;
+}
+
+.wfa-step.active {
+    background: #fff;
+    border-color: #2271b1;
+}
+
+.wfa-step.completed {
+    background: #e8f5e9;
+    border-color: #4caf50;
+}
+
+.wfa-step .step-number {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    background: #ddd;
+    border-radius: 50%;
+    margin-bottom: 10px;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.wfa-step.active .step-number {
+    background: #2271b1;
+    color: #fff;
+}
+
+.wfa-step.completed .step-number {
+    background: #4caf50;
+    color: #fff;
+}
+
+.wfa-step .step-title {
+    display: block;
+    font-weight: 600;
+}
+
+.wfa-setup-section {
+    background: #fff;
+    padding: 30px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.wfa-setup-section h2 {
+    margin-top: 0;
+}
+
+#wfa-token-result,
+#wfa-locations-result,
+#wfa-sync-result,
+#wfa-test-result {
+    margin-top: 15px;
+}
+
+.spinner.is-active {
+    float: none;
+    visibility: visible;
+    margin: 0 10px;
+}
+
+fieldset label {
+    display: block;
+    margin: 8px 0;
+}
+
+.wfa-settings-overview {
+    background: #fff;
+    padding: 30px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 20px;
+}
