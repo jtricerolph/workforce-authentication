@@ -191,4 +191,47 @@ jQuery(document).ready(function($) {
         // For now, just reload - you could add an AJAX handler to clear options
         alert('Please deactivate and reactivate the plugin to reset setup.');
     });
+
+    // Auto-sync settings form
+    $('#wfa-auto-sync-form').on('submit', function(e) {
+        e.preventDefault();
+
+        var $form = $(this);
+        var $button = $form.find('button[type="submit"]');
+        var $spinner = $form.find('.spinner');
+        var $result = $('#wfa-auto-sync-result');
+
+        var enabled = $('#wfa-auto-sync-enabled').is(':checked') ? '1' : '0';
+        var frequency = $('#wfa-auto-sync-frequency').val();
+
+        $button.prop('disabled', true);
+        $spinner.addClass('is-active');
+        $result.html('');
+
+        $.ajax({
+            url: wfaAdmin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'wfa_save_auto_sync',
+                nonce: wfaAdmin.nonce,
+                enabled: enabled,
+                frequency: frequency
+            },
+            success: function(response) {
+                if (response.success) {
+                    $result.html('<div class="notice notice-success"><p>' + response.data + '</p></div>');
+                } else {
+                    $result.html('<div class="notice notice-error"><p>' + response.data + '</p></div>');
+                }
+                $button.prop('disabled', false);
+            },
+            error: function() {
+                $result.html('<div class="notice notice-error"><p>Request failed. Please try again.</p></div>');
+                $button.prop('disabled', false);
+            },
+            complete: function() {
+                $spinner.removeClass('is-active');
+            }
+        });
+    });
 });

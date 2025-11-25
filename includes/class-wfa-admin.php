@@ -28,6 +28,7 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_save_locations', array($this, 'ajax_save_locations'));
         add_action('wp_ajax_wfa_sync_departments', array($this, 'ajax_sync_departments'));
         add_action('wp_ajax_wfa_get_team_users', array($this, 'ajax_get_team_users'));
+        add_action('wp_ajax_wfa_save_auto_sync', array($this, 'ajax_save_auto_sync'));
     }
 
     /**
@@ -317,6 +318,8 @@ class WFA_Admin {
         $scopes = get_option('wfa_token_scopes', array());
         $locations = get_option('wfa_selected_locations', array());
         $last_sync = get_option('wfa_last_sync', 'Never');
+        $auto_sync_enabled = get_option('wfa_auto_sync_enabled', false);
+        $auto_sync_frequency = get_option('wfa_auto_sync_frequency', 'daily');
 
         ?>
         <div class="wfa-settings-overview">
@@ -346,11 +349,58 @@ class WFA_Admin {
                 </tr>
             </table>
 
+            <h3 style="margin-top: 30px;">Auto-Sync Settings</h3>
+            <form id="wfa-auto-sync-form">
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Enable Auto-Sync</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="auto_sync_enabled" id="wfa-auto-sync-enabled" value="1" <?php checked($auto_sync_enabled, true); ?>>
+                                Automatically sync departments on a schedule
+                            </label>
+                        </td>
+                    </tr>
+                    <tr id="wfa-sync-frequency-row" style="<?php echo $auto_sync_enabled ? '' : 'display: none;'; ?>">
+                        <th scope="row">Sync Frequency</th>
+                        <td>
+                            <select name="auto_sync_frequency" id="wfa-auto-sync-frequency">
+                                <option value="hourly" <?php selected($auto_sync_frequency, 'hourly'); ?>>Hourly</option>
+                                <option value="twicedaily" <?php selected($auto_sync_frequency, 'twicedaily'); ?>>Twice Daily</option>
+                                <option value="daily" <?php selected($auto_sync_frequency, 'daily'); ?>>Daily</option>
+                                <option value="weekly" <?php selected($auto_sync_frequency, 'weekly'); ?>>Weekly</option>
+                            </select>
+                            <p class="description">How often to automatically sync departments from Workforce</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <p class="submit">
+                    <button type="submit" class="button button-primary">Save Auto-Sync Settings</button>
+                    <span class="spinner"></span>
+                </p>
+                <div id="wfa-auto-sync-result"></div>
+            </form>
+
+            <h3 style="margin-top: 30px;">Manual Actions</h3>
             <p>
-                <button type="button" id="wfa-resync-departments" class="button button-secondary">Re-sync Departments</button>
+                <button type="button" id="wfa-resync-departments" class="button button-secondary">Re-sync Departments Now</button>
                 <button type="button" id="wfa-reset-setup" class="button button-link-delete">Reset Setup</button>
             </p>
         </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            // Toggle frequency field based on checkbox
+            $('#wfa-auto-sync-enabled').on('change', function() {
+                if ($(this).is(':checked')) {
+                    $('#wfa-sync-frequency-row').show();
+                } else {
+                    $('#wfa-sync-frequency-row').hide();
+                }
+            });
+        });
+        </script>
         <?php
     }
 
@@ -493,6 +543,46 @@ class WFA_Admin {
         $users = $this->sync->get_department_users($dept_id);
 
         wp_send_json_success($users);
+    }
+
+    /**
+     * AJAX: Save auto-sync settings.
+     */
+    public function ajax_save_auto_sync() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $enabled = isset($_POST['enabled']) && $_POST['enabled'] === '1';
+        $frequency = sanitize_text_field($_POST['frequency'] ?? 'daily');
+
+        // Validate frequency
+        $valid_frequencies = array('hourly', 'twicedaily', 'daily', 'weekly');
+        if (!in_array($frequency, $valid_frequencies)) {
+            $frequency = 'daily';
+        }
+
+        // Save settings
+        update_option('wfa_auto_sync_enabled', $enabled);
+        update_option('wfa_auto_sync_frequency', $frequency);
+
+        // Clear existing cron
+        $timestamp = wp_next_scheduled('wfa_scheduled_sync');
+        if ($timestamp) {
+            wp_unschedule_event($timestamp, 'wfa_scheduled_sync');
+        }
+
+        // Schedule new cron if enabled
+        if ($enabled) {
+            wp_schedule_event(time(), $frequency, 'wfa_scheduled_sync');
+            $message = 'Auto-sync enabled. Departments will sync ' . $frequency . '.';
+        } else {
+            $message = 'Auto-sync disabled.';
+        }
+
+        wp_send_json_success($message);
     }
 
     /**

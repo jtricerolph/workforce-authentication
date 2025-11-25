@@ -70,10 +70,22 @@ class Workforce_Authentication {
         $this->admin = new WFA_Admin($this->api, $this->sync);
 
         add_action('plugins_loaded', array($this, 'init'));
+        add_action('wfa_scheduled_sync', array($this, 'run_scheduled_sync'));
     }
 
     public function init() {
         load_plugin_textdomain('workforce-auth', false, dirname(plugin_basename(__FILE__)) . '/languages');
+    }
+
+    /**
+     * Run scheduled sync via cron.
+     */
+    public function run_scheduled_sync() {
+        if (!get_option('wfa_auto_sync_enabled', false)) {
+            return;
+        }
+
+        $this->sync->sync_departments();
     }
 }
 

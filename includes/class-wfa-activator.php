@@ -81,6 +81,8 @@ class WFA_Activator {
             'wfa_token_created' => '',
             'wfa_selected_locations' => array(),
             'wfa_setup_complete' => false,
+            'wfa_auto_sync_enabled' => false,
+            'wfa_auto_sync_frequency' => 'daily',
         );
 
         foreach ($defaults as $key => $value) {
