@@ -18,8 +18,8 @@ class WFA_Auth {
         // Add registration link to wp-login.php
         add_action('login_form', array($this, 'add_register_link'));
 
-        // Whitelist registration page from Private Website plugin
-        add_filter('private_website_is_restricted', array($this, 'whitelist_registration'), 10, 2);
+        // Require login for frontend (if enabled)
+        add_action('template_redirect', array($this, 'require_login'));
 
         // Prevent login if user is pending approval
         add_filter('wp_authenticate_user', array($this, 'check_user_approval'), 10, 2);
@@ -53,23 +53,65 @@ class WFA_Auth {
     }
 
     /**
-     * Whitelist registration page from Private Website plugin.
+     * Require login for frontend pages (if enabled).
      */
-    public function whitelist_registration($is_restricted, $post_id) {
-        // Check if we're on the registration page
-        if (is_page('register') || strpos($_SERVER['REQUEST_URI'], '/register') !== false) {
-            return false; // Not restricted
+    public function require_login() {
+        // Check if require login is enabled
+        if (!get_option('wfa_require_login', false)) {
+            return;
         }
 
-        // Also whitelist AJAX endpoints
-        if (defined('DOING_AJAX') && DOING_AJAX) {
-            $action = $_REQUEST['action'] ?? '';
-            if (in_array($action, array('wfa_verify_details', 'wfa_complete_registration'))) {
-                return false;
-            }
+        // Skip if user is already logged in
+        if (is_user_logged_in()) {
+            return;
         }
 
-        return $is_restricted;
+        // Skip for admin area and Customizer preview
+        if (is_admin() || is_customize_preview()) {
+            return;
+        }
+
+        global $pagenow;
+
+        // Allow access to core login/registration endpoints
+        $allowed_pages = array(
+            'wp-login.php',
+            'wp-register.php',
+            'wp-signup.php',
+            'wp-activate.php'
+        );
+
+        if (in_array($pagenow, $allowed_pages, true)) {
+            return;
+        }
+
+        // Allow access to registration page
+        if (is_page('register')) {
+            return;
+        }
+
+        // Allow access to AJAX requests
+        if (wp_doing_ajax()) {
+            return;
+        }
+
+        // Allow access to REST API
+        if (defined('REST_REQUEST') && REST_REQUEST) {
+            return;
+        }
+
+        // Allow access to cron jobs
+        if (wp_doing_cron()) {
+            return;
+        }
+
+        // Get current URL for redirect after login
+        $current_url = home_url(add_query_arg(null, null));
+
+        // Redirect to login page with return URL
+        $login_url = wp_login_url($current_url);
+        wp_safe_redirect($login_url);
+        exit;
     }
 
     /**

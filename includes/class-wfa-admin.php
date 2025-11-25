@@ -765,14 +765,33 @@ class WFA_Admin {
         $registration_enabled = get_option('wfa_registration_enabled', false);
         $auto_approve = get_option('wfa_registration_auto_approve', false);
         $notification_email = get_option('wfa_registration_notification_email', get_option('admin_email'));
+        $require_login = get_option('wfa_require_login', false);
 
         ?>
         <div class="wrap">
-            <h1>Registration Settings</h1>
+            <h1>Registration & Access Settings</h1>
 
             <form method="post" action="">
                 <?php wp_nonce_field('wfa_registration_settings', 'wfa_registration_settings_nonce'); ?>
 
+                <h2>Access Control</h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Require Login</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="require_login" value="1" <?php checked($require_login, true); ?>>
+                                Require users to log in to view the website
+                            </label>
+                            <p class="description">
+                                When enabled, all frontend pages will require login. The registration page will be automatically whitelisted.<br>
+                                <strong>Note:</strong> You can disable the "Private Website" plugin if you enable this option.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top: 30px;">Registration Settings</h2>
                 <table class="form-table">
                     <tr>
                         <th scope="row">Enable Registration</th>
@@ -817,6 +836,7 @@ class WFA_Admin {
 
             <?php
             if (isset($_POST['wfa_save_registration_settings']) && check_admin_referer('wfa_registration_settings', 'wfa_registration_settings_nonce')) {
+                update_option('wfa_require_login', isset($_POST['require_login']) ? 1 : 0);
                 update_option('wfa_registration_enabled', isset($_POST['registration_enabled']) ? 1 : 0);
                 update_option('wfa_registration_auto_approve', isset($_POST['auto_approve']) ? 1 : 0);
                 update_option('wfa_registration_notification_email', sanitize_email($_POST['notification_email']));
@@ -835,8 +855,14 @@ class WFA_Admin {
                     <li>Publish the page</li>
                 </ol>
 
-                <h3 style="margin-top: 25px;">Whitelisting for Private Website Plugin</h3>
-                <p>If you're using the "Private Website" plugin, the registration page should automatically be whitelisted. If you have issues, you may need to check your plugin settings.</p>
+                <h3 style="margin-top: 25px;">Require Login Feature</h3>
+                <p>If you enable the "Require Login" option above, you can disable the "Private Website" plugin. The registration page is automatically whitelisted along with:</p>
+                <ul>
+                    <li>wp-login.php and login endpoints</li>
+                    <li>AJAX requests</li>
+                    <li>REST API endpoints</li>
+                    <li>WordPress cron jobs</li>
+                </ul>
 
                 <h3 style="margin-top: 25px;">Login Page</h3>
                 <p>A registration link will automatically appear on the wp-login.php page when registration is enabled.</p>
