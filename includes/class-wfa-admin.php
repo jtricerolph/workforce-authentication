@@ -32,6 +32,9 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_save_registration_settings', array($this, 'ajax_save_registration_settings'));
         add_action('wp_ajax_wfa_approve_registration', array($this, 'ajax_approve_registration'));
         add_action('wp_ajax_wfa_reject_registration', array($this, 'ajax_reject_registration'));
+        add_action('wp_ajax_wfa_get_department_permissions', array($this, 'ajax_get_department_permissions'));
+        add_action('wp_ajax_wfa_grant_permission', array($this, 'ajax_grant_permission'));
+        add_action('wp_ajax_wfa_revoke_permission', array($this, 'ajax_revoke_permission'));
     }
 
     /**
@@ -694,6 +697,9 @@ class WFA_Admin {
                                     <button type="button" class="button button-small wfa-view-team-users" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
                                         View Staff
                                     </button>
+                                    <button type="button" class="button button-small wfa-manage-permissions" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
+                                        Permissions
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -706,6 +712,17 @@ class WFA_Admin {
                         <div id="wfa-modal-content"></div>
                         <p style="text-align: right; margin-top: 20px;">
                             <button type="button" class="button button-primary wfa-close-modal">Close</button>
+                        </p>
+                    </div>
+                </div>
+
+                <div id="wfa-permissions-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; justify-content: center; align-items: center;">
+                    <div style="background: #fff; padding: 30px; border-radius: 4px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                        <h2 id="wfa-permissions-title">Manage Permissions</h2>
+                        <p id="wfa-permissions-description">Select which permissions this department should have. Users in this department will inherit these permissions.</p>
+                        <div id="wfa-permissions-content"></div>
+                        <p style="text-align: right; margin-top: 20px;">
+                            <button type="button" class="button button-primary wfa-close-permissions-modal">Close</button>
                         </p>
                     </div>
                 </div>
@@ -749,6 +766,120 @@ class WFA_Admin {
                     $('.wfa-close-modal, #wfa-team-users-modal').on('click', function(e) {
                         if (e.target === this) {
                             $('#wfa-team-users-modal').hide();
+                        }
+                    });
+
+                    // Permissions modal handlers
+                    var currentDeptId = null;
+
+                    $('.wfa-manage-permissions').on('click', function() {
+                        currentDeptId = $(this).data('dept-id');
+                        var deptName = $(this).data('dept-name');
+
+                        $('#wfa-permissions-title').text('Permissions for "' + deptName + '"');
+                        $('#wfa-permissions-content').html('<p>Loading... <span class="spinner is-active"></span></p>');
+                        $('#wfa-permissions-modal').css('display', 'flex');
+
+                        $.ajax({
+                            url: wfaAdmin.ajax_url,
+                            type: 'POST',
+                            data: {
+                                action: 'wfa_get_department_permissions',
+                                nonce: wfaAdmin.nonce,
+                                dept_id: currentDeptId
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    renderPermissions(response.data.all_permissions, response.data.granted_permissions);
+                                } else {
+                                    $('#wfa-permissions-content').html('<p style="color: red;">Error: ' + response.data + '</p>');
+                                }
+                            },
+                            error: function() {
+                                $('#wfa-permissions-content').html('<p style="color: red;">Failed to load permissions.</p>');
+                            }
+                        });
+                    });
+
+                    function renderPermissions(allPermissions, grantedPermissions) {
+                        if (allPermissions.length === 0) {
+                            $('#wfa-permissions-content').html('<p style="color: #666; font-style: italic;">No permissions available. Apps can register permissions using the <code>wfa_register_permissions</code> action hook.</p>');
+                            return;
+                        }
+
+                        var html = '<div style="max-height: 400px; overflow-y: auto;">';
+                        var groupedByApp = {};
+
+                        // Group permissions by app
+                        $.each(allPermissions, function(i, perm) {
+                            if (!groupedByApp[perm.app_name]) {
+                                groupedByApp[perm.app_name] = [];
+                            }
+                            groupedByApp[perm.app_name].push(perm);
+                        });
+
+                        // Render grouped permissions
+                        $.each(groupedByApp, function(appName, permissions) {
+                            html += '<h3 style="margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #ddd;">' + (appName || 'General') + '</h3>';
+                            $.each(permissions, function(i, perm) {
+                                var checked = grantedPermissions.indexOf(perm.permission_key) !== -1 ? ' checked' : '';
+                                html += '<label style="display: block; padding: 8px; background: ' + (checked ? '#f0f6f0' : '#fff') + '; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 3px; cursor: pointer;">';
+                                html += '<input type="checkbox" class="wfa-permission-toggle" data-permission-key="' + perm.permission_key + '"' + checked + '> ';
+                                html += '<strong>' + perm.permission_name + '</strong>';
+                                if (perm.permission_description) {
+                                    html += '<br><small style="color: #666;">' + perm.permission_description + '</small>';
+                                }
+                                html += '</label>';
+                            });
+                        });
+
+                        html += '</div>';
+                        $('#wfa-permissions-content').html(html);
+
+                        // Attach checkbox handlers
+                        $('.wfa-permission-toggle').on('change', function() {
+                            var checkbox = $(this);
+                            var permissionKey = checkbox.data('permission-key');
+                            var action = checkbox.is(':checked') ? 'wfa_grant_permission' : 'wfa_revoke_permission';
+                            var label = checkbox.closest('label');
+
+                            // Visual feedback
+                            checkbox.prop('disabled', true);
+                            label.css('opacity', '0.5');
+
+                            $.ajax({
+                                url: wfaAdmin.ajax_url,
+                                type: 'POST',
+                                data: {
+                                    action: action,
+                                    nonce: wfaAdmin.nonce,
+                                    dept_id: currentDeptId,
+                                    permission_key: permissionKey
+                                },
+                                success: function(response) {
+                                    checkbox.prop('disabled', false);
+                                    label.css('opacity', '1');
+                                    if (response.success) {
+                                        label.css('background', checkbox.is(':checked') ? '#f0f6f0' : '#fff');
+                                    } else {
+                                        // Revert checkbox on error
+                                        checkbox.prop('checked', !checkbox.is(':checked'));
+                                        alert('Error: ' + response.data);
+                                    }
+                                },
+                                error: function() {
+                                    checkbox.prop('disabled', false);
+                                    checkbox.prop('checked', !checkbox.is(':checked'));
+                                    label.css('opacity', '1');
+                                    alert('Failed to update permission.');
+                                }
+                            });
+                        });
+                    }
+
+                    $('.wfa-close-permissions-modal, #wfa-permissions-modal').on('click', function(e) {
+                        if (e.target === this) {
+                            $('#wfa-permissions-modal').hide();
                         }
                     });
                 });
@@ -1114,5 +1245,82 @@ class WFA_Admin {
         }
 
         wp_send_json_success('Registration rejected and deleted');
+    }
+
+    /**
+     * AJAX: Get department permissions.
+     */
+    public function ajax_get_department_permissions() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+
+        if (!$dept_id) {
+            wp_send_json_error('Invalid department ID');
+        }
+
+        $permissions = wfa()->permissions->get_permissions();
+        $dept_permissions = wfa()->permissions->get_department_permissions($dept_id);
+
+        wp_send_json_success(array(
+            'all_permissions' => $permissions,
+            'granted_permissions' => $dept_permissions
+        ));
+    }
+
+    /**
+     * AJAX: Grant permission to department.
+     */
+    public function ajax_grant_permission() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+        $permission_key = sanitize_text_field($_POST['permission_key'] ?? '');
+
+        if (!$dept_id || !$permission_key) {
+            wp_send_json_error('Invalid parameters');
+        }
+
+        $result = wfa()->permissions->grant_permission($dept_id, $permission_key);
+
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+
+        wp_send_json_success('Permission granted');
+    }
+
+    /**
+     * AJAX: Revoke permission from department.
+     */
+    public function ajax_revoke_permission() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+        $permission_key = sanitize_text_field($_POST['permission_key'] ?? '');
+
+        if (!$dept_id || !$permission_key) {
+            wp_send_json_error('Invalid parameters');
+        }
+
+        $result = wfa()->permissions->revoke_permission($dept_id, $permission_key);
+
+        if (!$result) {
+            wp_send_json_error('Failed to revoke permission');
+        }
+
+        wp_send_json_success('Permission revoked');
     }
 }

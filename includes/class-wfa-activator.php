@@ -104,6 +104,33 @@ class WFA_Activator {
         ) $charset_collate;";
         dbDelta($sql);
 
+        // Permissions table (for apps/modules to register permissions)
+        $sql = "CREATE TABLE {$prefix}permissions (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            permission_key varchar(100) NOT NULL,
+            permission_name varchar(255) NOT NULL,
+            permission_description text,
+            app_name varchar(100) NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY permission_key (permission_key),
+            KEY app_name (app_name)
+        ) $charset_collate;";
+        dbDelta($sql);
+
+        // Department permissions mapping table
+        $sql = "CREATE TABLE {$prefix}department_permissions (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            department_id bigint(20) NOT NULL,
+            permission_key varchar(100) NOT NULL,
+            granted_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY department_id (department_id),
+            KEY permission_key (permission_key),
+            UNIQUE KEY dept_permission (department_id, permission_key)
+        ) $charset_collate;";
+        dbDelta($sql);
+
         update_option('wfa_db_version', WFA_VERSION);
     }
 
@@ -146,6 +173,8 @@ class WFA_Activator {
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}department_users");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}users");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}rate_limits");
+        $wpdb->query("DROP TABLE IF EXISTS {$prefix}permissions");
+        $wpdb->query("DROP TABLE IF EXISTS {$prefix}department_permissions");
 
         // Delete all options
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'wfa_%'");

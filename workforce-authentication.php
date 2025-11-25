@@ -48,6 +48,7 @@ require_once WFA_PLUGIN_DIR . 'includes/class-wfa-sync.php';
 require_once WFA_PLUGIN_DIR . 'includes/class-wfa-admin.php';
 require_once WFA_PLUGIN_DIR . 'includes/class-wfa-registration.php';
 require_once WFA_PLUGIN_DIR . 'includes/class-wfa-auth.php';
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-permissions.php';
 
 /**
  * Main plugin class.
@@ -60,6 +61,7 @@ class Workforce_Authentication {
     public $admin;
     public $registration;
     public $auth;
+    public $permissions;
 
     public static function get_instance() {
         if (null === self::$instance) {
@@ -74,10 +76,21 @@ class Workforce_Authentication {
         $this->admin = new WFA_Admin($this->api, $this->sync);
         $this->registration = new WFA_Registration($this->api);
         $this->auth = new WFA_Auth();
+        $this->permissions = new WFA_Permissions();
 
         add_action('plugins_loaded', array($this, 'init'));
         add_action('wfa_scheduled_sync', array($this, 'run_scheduled_sync'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+
+        // Fire action for apps to register permissions
+        add_action('init', array($this, 'register_permissions_hook'), 5);
+    }
+
+    /**
+     * Hook for apps to register their permissions.
+     */
+    public function register_permissions_hook() {
+        do_action('wfa_register_permissions', $this->permissions);
     }
 
     public function init() {
@@ -125,6 +138,56 @@ class Workforce_Authentication {
  */
 function wfa() {
     return Workforce_Authentication::get_instance();
+}
+
+/**
+ * Helper function to register a permission.
+ *
+ * @param string $permission_key Unique key for the permission.
+ * @param string $permission_name Human-readable name.
+ * @param string $permission_description Description of what this permission grants.
+ * @param string $app_name Name of the app/module.
+ * @return bool|WP_Error
+ */
+function wfa_register_permission($permission_key, $permission_name, $permission_description = '', $app_name = '') {
+    return wfa()->permissions->register_permission($permission_key, $permission_name, $permission_description, $app_name);
+}
+
+/**
+ * Helper function to check if current user has a permission.
+ *
+ * @param string $permission_key Permission key to check.
+ * @param int $user_id Optional. User ID to check. Defaults to current user.
+ * @return bool
+ */
+function wfa_user_can($permission_key, $user_id = null) {
+    if (null === $user_id) {
+        $user_id = get_current_user_id();
+    }
+
+    if (!$user_id) {
+        return false;
+    }
+
+    return wfa()->permissions->user_has_permission($user_id, $permission_key);
+}
+
+/**
+ * Helper function to get all permissions for a user.
+ *
+ * @param int $user_id Optional. User ID. Defaults to current user.
+ * @return array Array of permission keys.
+ */
+function wfa_get_user_permissions($user_id = null) {
+    if (null === $user_id) {
+        $user_id = get_current_user_id();
+    }
+
+    if (!$user_id) {
+        return array();
+    }
+
+    return wfa()->permissions->get_user_permissions($user_id);
 }
 
 wfa();
