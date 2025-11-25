@@ -11,11 +11,11 @@ if (!defined('ABSPATH')) {
 ?>
 
 <div class="wfa-registration-container">
-    <h2>Register using your Workforce employee details</h2>
+    <h2>Register</h2>
 
     <!-- Step 1: Verification -->
     <div id="wfa-step-1" class="wfa-registration-step">
-        <p>Please enter your email address and at least <strong>3</strong> of the following verification fields:</p>
+        <p>Please enter your email address and at least <strong>3</strong> of the following verification fields, email and verification fields must match your workforce account details:</p>
 
         <form id="wfa-verification-form">
             <?php wp_nonce_field('wfa_registration_nonce', 'wfa_registration_nonce'); ?>
