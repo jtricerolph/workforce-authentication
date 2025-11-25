@@ -113,7 +113,7 @@ class WFA_Sync {
                     'last_name' => $this->normalize_name($user['last_name'] ?? ''),
                     'employee_id' => trim($user['employee_id'] ?? ''),
                     'phone' => trim($user['phone'] ?? ''),
-                    'normalized_phone' => $this->normalize_phone($user['normalised_phone'] ?? ''),
+                    'normalized_phone' => trim($user['normalised_phone'] ?? ''), // Already normalized by API
                     'date_of_birth' => $this->normalize_date_for_db($user['date_of_birth'] ?? ''),
                     'passcode' => trim($user['passcode'] ?? ''),
                     'postcode' => $this->normalize_postcode($user['postcode'] ?? ''),

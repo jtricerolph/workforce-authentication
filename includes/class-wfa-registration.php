@@ -258,7 +258,7 @@ class WFA_Registration {
 
             if (!empty($phone)) {
                 $user_phone = $this->normalize_phone($user['phone'] ?? '');
-                $user_normalized_phone = $this->normalize_phone($user['normalised_phone'] ?? '');
+                $user_normalized_phone = trim($user['normalised_phone'] ?? ''); // Already normalized by API
                 if ($user_phone === $phone || $user_normalized_phone === $phone) {
                     $matches++;
                 }
@@ -301,7 +301,7 @@ class WFA_Registration {
             'last_name' => $this->normalize_name($user['last_name'] ?? ''),
             'employee_id' => trim($user['employee_id'] ?? ''),
             'phone' => trim($user['phone'] ?? ''),
-            'normalized_phone' => $this->normalize_phone($user['normalised_phone'] ?? ''),
+            'normalized_phone' => trim($user['normalised_phone'] ?? ''), // Already normalized by API
             'date_of_birth' => $this->normalize_date_for_db($user['date_of_birth'] ?? ''),
             'passcode' => trim($user['passcode'] ?? ''),
             'postcode' => $this->normalize_postcode($user['postcode'] ?? ''),
