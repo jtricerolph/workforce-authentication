@@ -27,6 +27,7 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_get_locations', array($this, 'ajax_get_locations'));
         add_action('wp_ajax_wfa_save_locations', array($this, 'ajax_save_locations'));
         add_action('wp_ajax_wfa_sync_departments', array($this, 'ajax_sync_departments'));
+        add_action('wp_ajax_wfa_get_team_users', array($this, 'ajax_get_team_users'));
     }
 
     /**
@@ -41,6 +42,24 @@ class WFA_Admin {
             array($this, 'render_setup_page'),
             'dashicons-groups',
             30
+        );
+
+        add_submenu_page(
+            'workforce-auth',
+            'Setup',
+            'Setup',
+            'manage_options',
+            'workforce-auth',
+            array($this, 'render_setup_page')
+        );
+
+        add_submenu_page(
+            'workforce-auth',
+            'Teams',
+            'Teams',
+            'manage_options',
+            'workforce-auth-teams',
+            array($this, 'render_teams_page')
         );
     }
 
@@ -453,5 +472,162 @@ class WFA_Admin {
         update_option('wfa_setup_complete', true);
 
         wp_send_json_success($result);
+    }
+
+    /**
+     * AJAX: Get team users.
+     */
+    public function ajax_get_team_users() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $dept_id = intval($_POST['dept_id'] ?? 0);
+
+        if (!$dept_id) {
+            wp_send_json_error('Invalid department ID');
+        }
+
+        $users = $this->sync->get_department_users($dept_id);
+
+        wp_send_json_success($users);
+    }
+
+    /**
+     * Render teams page.
+     */
+    public function render_teams_page() {
+        $departments = $this->sync->get_departments();
+        $selected_locations = get_option('wfa_selected_locations', array());
+        $last_sync = get_option('wfa_last_sync', 'Never');
+
+        ?>
+        <div class="wrap">
+            <h1>Synced Teams/Departments</h1>
+
+            <div class="wfa-teams-header" style="background: #fff; padding: 15px 20px; border: 1px solid #ddd; border-radius: 4px; margin: 20px 0;">
+                <p>
+                    <strong>Selected Locations:</strong> <?php echo count($selected_locations); ?> location(s) |
+                    <strong>Last Sync:</strong> <?php echo esc_html($last_sync); ?>
+                </p>
+                <p>
+                    <button type="button" id="wfa-resync-departments" class="button button-secondary">Re-sync Departments</button>
+                    <span class="spinner"></span>
+                    <span id="wfa-sync-result"></span>
+                </p>
+            </div>
+
+            <?php if (empty($departments)): ?>
+                <div class="notice notice-warning">
+                    <p>No teams/departments synced yet. Please complete the setup or click "Re-sync Departments" above.</p>
+                </div>
+            <?php else: ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th scope="col" style="width: 50px;">ID</th>
+                            <th scope="col">Team Name</th>
+                            <th scope="col" style="width: 100px;">Location ID</th>
+                            <th scope="col" style="width: 100px;">Colour</th>
+                            <th scope="col" style="width: 120px;">Staff Count</th>
+                            <th scope="col" style="width: 120px;">Managers</th>
+                            <th scope="col" style="width: 180px;">Last Synced</th>
+                            <th scope="col" style="width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($departments as $dept):
+                            $users = $this->sync->get_department_users($dept->id);
+                            $staff_count = count($users);
+                            $managers_count = count(array_filter($users, function($u) { return $u->is_manager == 1; }));
+                        ?>
+                            <tr>
+                                <td><?php echo esc_html($dept->workforce_id); ?></td>
+                                <td>
+                                    <strong><?php echo esc_html($dept->name); ?></strong>
+                                    <?php if ($dept->export_name): ?>
+                                        <br><small>Export: <?php echo esc_html($dept->export_name); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo esc_html($dept->location_id); ?></td>
+                                <td>
+                                    <?php if ($dept->colour): ?>
+                                        <span style="display: inline-block; width: 20px; height: 20px; background: <?php echo esc_attr($dept->colour); ?>; border: 1px solid #ddd; border-radius: 3px; vertical-align: middle;"></span>
+                                        <code style="margin-left: 5px;"><?php echo esc_html($dept->colour); ?></code>
+                                    <?php else: ?>
+                                        <span style="color: #999;">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo $staff_count; ?></td>
+                                <td><?php echo $managers_count; ?></td>
+                                <td><?php echo $dept->last_synced ? esc_html($dept->last_synced) : '<span style="color: #999;">—</span>'; ?></td>
+                                <td>
+                                    <button type="button" class="button button-small wfa-view-team-users" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
+                                        View Staff
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <div id="wfa-team-users-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; justify-content: center; align-items: center;">
+                    <div style="background: #fff; padding: 30px; border-radius: 4px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                        <h2 id="wfa-modal-title">Team Staff</h2>
+                        <div id="wfa-modal-content"></div>
+                        <p style="text-align: right; margin-top: 20px;">
+                            <button type="button" class="button button-primary wfa-close-modal">Close</button>
+                        </p>
+                    </div>
+                </div>
+
+                <script>
+                jQuery(document).ready(function($) {
+                    $('.wfa-view-team-users').on('click', function() {
+                        var deptId = $(this).data('dept-id');
+                        var deptName = $(this).data('dept-name');
+
+                        $('#wfa-modal-title').text('Staff in "' + deptName + '"');
+                        $('#wfa-modal-content').html('<p>Loading... <span class="spinner is-active"></span></p>');
+                        $('#wfa-team-users-modal').css('display', 'flex');
+
+                        $.ajax({
+                            url: wfaAdmin.ajax_url,
+                            type: 'POST',
+                            data: {
+                                action: 'wfa_get_team_users',
+                                nonce: wfaAdmin.nonce,
+                                dept_id: deptId
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    var html = '<table class="wp-list-table widefat fixed striped"><thead><tr><th>User ID</th><th>Role</th></tr></thead><tbody>';
+                                    $.each(response.data, function(i, user) {
+                                        html += '<tr><td>' + user.workforce_user_id + '</td><td>' + (user.is_manager == 1 ? '<strong>Manager</strong>' : 'Staff') + '</td></tr>';
+                                    });
+                                    html += '</tbody></table>';
+                                    $('#wfa-modal-content').html(html);
+                                } else {
+                                    $('#wfa-modal-content').html('<p style="color: red;">Error: ' + response.data + '</p>');
+                                }
+                            },
+                            error: function() {
+                                $('#wfa-modal-content').html('<p style="color: red;">Failed to load staff.</p>');
+                            }
+                        });
+                    });
+
+                    $('.wfa-close-modal, #wfa-team-users-modal').on('click', function(e) {
+                        if (e.target === this) {
+                            $('#wfa-team-users-modal').hide();
+                        }
+                    });
+                });
+                </script>
+            <?php endif; ?>
+        </div>
+        <?php
     }
 }
