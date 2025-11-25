@@ -29,6 +29,9 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_sync_departments', array($this, 'ajax_sync_departments'));
         add_action('wp_ajax_wfa_get_team_users', array($this, 'ajax_get_team_users'));
         add_action('wp_ajax_wfa_save_auto_sync', array($this, 'ajax_save_auto_sync'));
+        add_action('wp_ajax_wfa_save_registration_settings', array($this, 'ajax_save_registration_settings'));
+        add_action('wp_ajax_wfa_approve_registration', array($this, 'ajax_approve_registration'));
+        add_action('wp_ajax_wfa_reject_registration', array($this, 'ajax_reject_registration'));
     }
 
     /**
@@ -62,6 +65,28 @@ class WFA_Admin {
             'workforce-auth-teams',
             array($this, 'render_teams_page')
         );
+
+        add_submenu_page(
+            'workforce-auth',
+            'Registration Settings',
+            'Registration',
+            'manage_options',
+            'workforce-auth-registration',
+            array($this, 'render_registration_page')
+        );
+
+        // Conditional pending registrations page
+        $pending_count = $this->get_pending_registrations_count();
+        $pending_menu_title = $pending_count > 0 ? "Pending ($pending_count)" : 'Pending';
+
+        add_submenu_page(
+            'workforce-auth',
+            'Pending Registrations',
+            $pending_menu_title,
+            'manage_options',
+            'workforce-auth-registrations',
+            array($this, 'render_pending_registrations_page')
+        );
     }
 
     /**
@@ -78,6 +103,18 @@ class WFA_Admin {
         wp_localize_script('wfa-admin', 'wfaAdmin', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('wfa_admin_nonce'),
+        ));
+    }
+
+    /**
+     * Enqueue frontend registration scripts.
+     */
+    public function enqueue_registration_scripts() {
+        wp_enqueue_style('wfa-registration', WFA_PLUGIN_URL . 'assets/registration.css', array(), WFA_VERSION);
+        wp_enqueue_script('wfa-registration', WFA_PLUGIN_URL . 'assets/registration.js', array('jquery'), WFA_VERSION, true);
+
+        wp_localize_script('wfa-registration', 'wfaRegistration', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
         ));
     }
 
@@ -719,5 +756,313 @@ class WFA_Admin {
             <?php endif; ?>
         </div>
         <?php
+    }
+
+    /**
+     * Render registration settings page.
+     */
+    public function render_registration_page() {
+        $registration_enabled = get_option('wfa_registration_enabled', false);
+        $auto_approve = get_option('wfa_registration_auto_approve', false);
+        $notification_email = get_option('wfa_registration_notification_email', get_option('admin_email'));
+
+        ?>
+        <div class="wrap">
+            <h1>Registration Settings</h1>
+
+            <form method="post" action="">
+                <?php wp_nonce_field('wfa_registration_settings', 'wfa_registration_settings_nonce'); ?>
+
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Enable Registration</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="registration_enabled" value="1" <?php checked($registration_enabled, true); ?>>
+                                Allow users to register using Workforce credentials
+                            </label>
+                            <p class="description">
+                                Registration form will be available at: <code><?php echo home_url('/register/'); ?></code><br>
+                                Use shortcode: <code>[wfa_register]</code>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Approval Mode</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="auto_approve" value="1" <?php checked($auto_approve, true); ?>>
+                                Automatically approve new registrations
+                            </label>
+                            <p class="description">
+                                If unchecked, new registrations will require manual approval.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Notification Email</th>
+                        <td>
+                            <input type="email" name="notification_email" value="<?php echo esc_attr($notification_email); ?>" class="regular-text">
+                            <p class="description">
+                                Email address to receive notifications for pending registrations.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <p class="submit">
+                    <button type="submit" name="wfa_save_registration_settings" class="button button-primary">Save Settings</button>
+                </p>
+            </form>
+
+            <?php
+            if (isset($_POST['wfa_save_registration_settings']) && check_admin_referer('wfa_registration_settings', 'wfa_registration_settings_nonce')) {
+                update_option('wfa_registration_enabled', isset($_POST['registration_enabled']) ? 1 : 0);
+                update_option('wfa_registration_auto_approve', isset($_POST['auto_approve']) ? 1 : 0);
+                update_option('wfa_registration_notification_email', sanitize_email($_POST['notification_email']));
+                echo '<div class="notice notice-success"><p>Settings saved successfully.</p></div>';
+            }
+            ?>
+
+            <h2 style="margin-top: 40px;">Setup Instructions</h2>
+            <div style="background: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 4px;">
+                <h3>Creating the Registration Page</h3>
+                <ol>
+                    <li>Go to <strong>Pages → Add New</strong></li>
+                    <li>Set the title to "Register"</li>
+                    <li>Set the permalink/slug to "register"</li>
+                    <li>Add the shortcode: <code>[wfa_register]</code></li>
+                    <li>Publish the page</li>
+                </ol>
+
+                <h3 style="margin-top: 25px;">Whitelisting for Private Website Plugin</h3>
+                <p>If you're using the "Private Website" plugin, the registration page should automatically be whitelisted. If you have issues, you may need to check your plugin settings.</p>
+
+                <h3 style="margin-top: 25px;">Login Page</h3>
+                <p>A registration link will automatically appear on the wp-login.php page when registration is enabled.</p>
+                <p>You can also create a custom login page using the <code>[wfa_login]</code> shortcode.</p>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render pending registrations page.
+     */
+    public function render_pending_registrations_page() {
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        $pending_users = $wpdb->get_results("SELECT * FROM $table WHERE pending_approval = 1 ORDER BY created_at DESC");
+
+        ?>
+        <div class="wrap">
+            <h1>Pending Registrations</h1>
+
+            <?php if (empty($pending_users)): ?>
+                <div class="notice notice-info">
+                    <p>No pending registrations.</p>
+                </div>
+            <?php else: ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th scope="col">Email</th>
+                            <th scope="col">Last Name</th>
+                            <th scope="col">Employee ID</th>
+                            <th scope="col">Registered</th>
+                            <th scope="col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pending_users as $user): ?>
+                            <tr>
+                                <td><?php echo esc_html($user->email); ?></td>
+                                <td><?php echo esc_html($user->last_name); ?></td>
+                                <td><?php echo esc_html($user->employee_id); ?></td>
+                                <td><?php echo esc_html($user->created_at); ?></td>
+                                <td>
+                                    <button type="button" class="button button-small button-primary wfa-approve-user" data-user-id="<?php echo esc_attr($user->workforce_id); ?>">
+                                        Approve
+                                    </button>
+                                    <button type="button" class="button button-small button-link-delete wfa-reject-user" data-user-id="<?php echo esc_attr($user->workforce_id); ?>">
+                                        Reject
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <script>
+                jQuery(document).ready(function($) {
+                    $('.wfa-approve-user').on('click', function() {
+                        var button = $(this);
+                        var userId = button.data('user-id');
+
+                        if (!confirm('Approve this registration?')) {
+                            return;
+                        }
+
+                        $.ajax({
+                            url: wfaAdmin.ajax_url,
+                            type: 'POST',
+                            data: {
+                                action: 'wfa_approve_registration',
+                                nonce: wfaAdmin.nonce,
+                                user_id: userId
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    alert(response.data);
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + response.data);
+                                }
+                            }
+                        });
+                    });
+
+                    $('.wfa-reject-user').on('click', function() {
+                        var button = $(this);
+                        var userId = button.data('user-id');
+
+                        if (!confirm('Reject and delete this registration?')) {
+                            return;
+                        }
+
+                        $.ajax({
+                            url: wfaAdmin.ajax_url,
+                            type: 'POST',
+                            data: {
+                                action: 'wfa_reject_registration',
+                                nonce: wfaAdmin.nonce,
+                                user_id: userId
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    alert(response.data);
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + response.data);
+                                }
+                            }
+                        });
+                    });
+                });
+                </script>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Get count of pending registrations.
+     */
+    private function get_pending_registrations_count() {
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+        return (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE pending_approval = 1");
+    }
+
+    /**
+     * AJAX: Approve registration.
+     */
+    public function ajax_approve_registration() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $workforce_user_id = intval($_POST['user_id'] ?? 0);
+
+        if (!$workforce_user_id) {
+            wp_send_json_error('Invalid user ID');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        $user = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE workforce_id = %d", $workforce_user_id));
+
+        if (!$user) {
+            wp_send_json_error('User not found');
+        }
+
+        // Find the WordPress user by email
+        $wp_user = get_user_by('email', $user->email);
+
+        if (!$wp_user) {
+            wp_send_json_error('WordPress user not found');
+        }
+
+        // Activate the user
+        wp_update_user(array(
+            'ID' => $wp_user->ID,
+            'user_status' => 0 // Active
+        ));
+
+        // Update workforce_users table
+        $wpdb->update(
+            $table,
+            array(
+                'wp_user_id' => $wp_user->ID,
+                'pending_approval' => 0
+            ),
+            array('workforce_id' => $workforce_user_id),
+            array('%d', '%d'),
+            array('%d')
+        );
+
+        // Send approval email
+        wp_mail(
+            $user->email,
+            'Registration Approved',
+            sprintf(
+                "Your registration has been approved! You can now log in at: %s",
+                wp_login_url()
+            )
+        );
+
+        wp_send_json_success('Registration approved successfully');
+    }
+
+    /**
+     * AJAX: Reject registration.
+     */
+    public function ajax_reject_registration() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $workforce_user_id = intval($_POST['user_id'] ?? 0);
+
+        if (!$workforce_user_id) {
+            wp_send_json_error('Invalid user ID');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        $user = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE workforce_id = %d", $workforce_user_id));
+
+        if (!$user) {
+            wp_send_json_error('User not found');
+        }
+
+        // Delete from workforce_users table
+        $wpdb->delete($table, array('workforce_id' => $workforce_user_id), array('%d'));
+
+        // Delete WordPress user if exists
+        $wp_user = get_user_by('email', $user->email);
+        if ($wp_user) {
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+            wp_delete_user($wp_user->ID);
+        }
+
+        wp_send_json_success('Registration rejected and deleted');
     }
 }

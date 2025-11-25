@@ -46,6 +46,8 @@ require_once WFA_PLUGIN_DIR . 'includes/class-wfa-activator.php';
 require_once WFA_PLUGIN_DIR . 'includes/class-wfa-api.php';
 require_once WFA_PLUGIN_DIR . 'includes/class-wfa-sync.php';
 require_once WFA_PLUGIN_DIR . 'includes/class-wfa-admin.php';
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-registration.php';
+require_once WFA_PLUGIN_DIR . 'includes/class-wfa-auth.php';
 
 /**
  * Main plugin class.
@@ -56,6 +58,8 @@ class Workforce_Authentication {
     public $api;
     public $sync;
     public $admin;
+    public $registration;
+    public $auth;
 
     public static function get_instance() {
         if (null === self::$instance) {
@@ -68,13 +72,32 @@ class Workforce_Authentication {
         $this->api = new WFA_API();
         $this->sync = new WFA_Sync($this->api);
         $this->admin = new WFA_Admin($this->api, $this->sync);
+        $this->registration = new WFA_Registration($this->api);
+        $this->auth = new WFA_Auth();
 
         add_action('plugins_loaded', array($this, 'init'));
         add_action('wfa_scheduled_sync', array($this, 'run_scheduled_sync'));
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
     }
 
     public function init() {
         load_plugin_textdomain('workforce-auth', false, dirname(plugin_basename(__FILE__)) . '/languages');
+    }
+
+    /**
+     * Enqueue frontend scripts.
+     */
+    public function enqueue_frontend_scripts() {
+        // Only load on pages with shortcodes or registration/login pages
+        global $post;
+        if (is_a($post, 'WP_Post') && (has_shortcode($post->post_content, 'wfa_register') || has_shortcode($post->post_content, 'wfa_login'))) {
+            $this->admin->enqueue_registration_scripts();
+        }
+
+        // Also check if we're on the registration page by slug
+        if (is_page('register')) {
+            $this->admin->enqueue_registration_scripts();
+        }
     }
 
     /**

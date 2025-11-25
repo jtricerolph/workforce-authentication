@@ -68,6 +68,42 @@ class WFA_Activator {
         ) $charset_collate;";
         dbDelta($sql);
 
+        // Workforce users table (synced from API)
+        $sql = "CREATE TABLE {$prefix}users (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            workforce_id bigint(20) NOT NULL,
+            wp_user_id bigint(20) DEFAULT NULL,
+            email varchar(255) NOT NULL,
+            last_name varchar(255),
+            employee_id varchar(100),
+            phone varchar(50),
+            normalized_phone varchar(50),
+            date_of_birth date,
+            passcode varchar(20),
+            postcode varchar(20),
+            pending_approval tinyint(1) DEFAULT 0,
+            last_synced datetime,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY workforce_id (workforce_id),
+            UNIQUE KEY email (email),
+            KEY wp_user_id (wp_user_id),
+            KEY pending_approval (pending_approval)
+        ) $charset_collate;";
+        dbDelta($sql);
+
+        // Rate limiting table
+        $sql = "CREATE TABLE {$prefix}rate_limits (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            ip_address varchar(45) NOT NULL,
+            attempts int(11) DEFAULT 1,
+            last_attempt datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ip_address (ip_address),
+            KEY last_attempt (last_attempt)
+        ) $charset_collate;";
+        dbDelta($sql);
+
         update_option('wfa_db_version', WFA_VERSION);
     }
 
@@ -83,6 +119,9 @@ class WFA_Activator {
             'wfa_setup_complete' => false,
             'wfa_auto_sync_enabled' => false,
             'wfa_auto_sync_frequency' => 'daily',
+            'wfa_registration_enabled' => false,
+            'wfa_registration_auto_approve' => false,
+            'wfa_registration_notification_email' => get_option('admin_email'),
         );
 
         foreach ($defaults as $key => $value) {
@@ -102,8 +141,13 @@ class WFA_Activator {
 
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}departments");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}department_users");
+        $wpdb->query("DROP TABLE IF EXISTS {$prefix}users");
+        $wpdb->query("DROP TABLE IF EXISTS {$prefix}rate_limits");
 
         // Delete all options
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'wfa_%'");
+
+        // Clean up transients
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_wfa_%' OR option_name LIKE '_transient_timeout_wfa_%'");
     }
 }

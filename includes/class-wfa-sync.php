@@ -60,11 +60,172 @@ class WFA_Sync {
 
         update_option('wfa_last_sync', current_time('mysql'));
 
+        // Also sync user data
+        $this->sync_users($location_ids);
+
         return array(
             'success' => true,
             'departments_synced' => $departments_synced,
             'users_synced' => $users_synced,
         );
+    }
+
+    /**
+     * Sync user data from Workforce API to workforce_users table.
+     *
+     * @param array $location_ids Array of location IDs to sync users from.
+     * @return int Number of users synced.
+     */
+    public function sync_users($location_ids = null) {
+        if (null === $location_ids) {
+            $location_ids = get_option('wfa_selected_locations', array());
+        }
+
+        if (empty($location_ids)) {
+            return 0;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+        $users_synced = 0;
+
+        foreach ($location_ids as $location_id) {
+            $response = $this->api->request('GET', '/api/v2/users', array('location_id' => $location_id));
+
+            if (is_wp_error($response)) {
+                continue;
+            }
+
+            if (!isset($response['data']) || !is_array($response['data'])) {
+                continue;
+            }
+
+            foreach ($response['data'] as $user) {
+                // Check if user exists
+                $existing = $wpdb->get_row($wpdb->prepare(
+                    "SELECT * FROM $table WHERE workforce_id = %d",
+                    $user['id']
+                ));
+
+                $user_data = array(
+                    'workforce_id' => $user['id'],
+                    'email' => $this->normalize_email($user['email'] ?? ''),
+                    'last_name' => $this->normalize_name($user['last_name'] ?? ''),
+                    'employee_id' => trim($user['employee_id'] ?? ''),
+                    'phone' => trim($user['phone'] ?? ''),
+                    'normalized_phone' => $this->normalize_phone($user['normalised_phone'] ?? ''),
+                    'date_of_birth' => $this->normalize_date_for_db($user['date_of_birth'] ?? ''),
+                    'passcode' => trim($user['passcode'] ?? ''),
+                    'postcode' => $this->normalize_postcode($user['postcode'] ?? ''),
+                    'last_synced' => current_time('mysql')
+                );
+
+                if ($existing) {
+                    // Keep existing wp_user_id and pending_approval status
+                    $wpdb->update(
+                        $table,
+                        $user_data,
+                        array('workforce_id' => $user['id']),
+                        array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'),
+                        array('%d')
+                    );
+                } else {
+                    // Insert new user
+                    $wpdb->insert(
+                        $table,
+                        array_merge($user_data, array(
+                            'wp_user_id' => null,
+                            'pending_approval' => 0
+                        )),
+                        array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d')
+                    );
+                }
+
+                $users_synced++;
+            }
+        }
+
+        return $users_synced;
+    }
+
+    /**
+     * Normalize email.
+     */
+    private function normalize_email($email) {
+        return strtolower(trim($email));
+    }
+
+    /**
+     * Normalize name.
+     */
+    private function normalize_name($name) {
+        return strtolower(trim($name));
+    }
+
+    /**
+     * Normalize phone to E.164 format.
+     */
+    private function normalize_phone($phone) {
+        // Remove all non-numeric characters
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+
+        if (empty($phone)) {
+            return '';
+        }
+
+        // If starts with 0, assume UK and add +44
+        if (substr($phone, 0, 1) === '0') {
+            $phone = '44' . substr($phone, 1);
+        }
+
+        // Add + prefix
+        if (substr($phone, 0, 1) !== '+') {
+            $phone = '+' . $phone;
+        }
+
+        return $phone;
+    }
+
+    /**
+     * Normalize date from DD/MM/YYYY or other formats to YYYY-MM-DD.
+     */
+    private function normalize_date($date) {
+        if (empty($date)) {
+            return '';
+        }
+
+        // Try DD/MM/YYYY format first
+        if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $date, $matches)) {
+            return sprintf('%04d-%02d-%02d', $matches[3], $matches[2], $matches[1]);
+        }
+
+        // Try YYYY-MM-DD format
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $date, $matches)) {
+            return sprintf('%04d-%02d-%02d', $matches[1], $matches[2], $matches[3]);
+        }
+
+        // Try other formats with strtotime
+        $timestamp = strtotime($date);
+        if ($timestamp) {
+            return date('Y-m-d', $timestamp);
+        }
+
+        return '';
+    }
+
+    /**
+     * Normalize date for database storage.
+     */
+    private function normalize_date_for_db($date) {
+        $normalized = $this->normalize_date($date);
+        return $normalized ? $normalized : null;
+    }
+
+    /**
+     * Normalize postcode.
+     */
+    private function normalize_postcode($postcode) {
+        return strtoupper(str_replace(' ', '', trim($postcode)));
     }
 
     /**

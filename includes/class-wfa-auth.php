@@ -1,0 +1,90 @@
+<?php
+/**
+ * Authentication and access control.
+ *
+ * @package Workforce_Authentication
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class WFA_Auth {
+
+    public function __construct() {
+        // Register login shortcode
+        add_shortcode('wfa_login', array($this, 'render_login_form'));
+
+        // Add registration link to wp-login.php
+        add_action('login_form', array($this, 'add_register_link'));
+
+        // Whitelist registration page from Private Website plugin
+        add_filter('private_website_is_restricted', array($this, 'whitelist_registration'), 10, 2);
+
+        // Prevent login if user is pending approval
+        add_filter('wp_authenticate_user', array($this, 'check_user_approval'), 10, 2);
+    }
+
+    /**
+     * Render login form shortcode.
+     */
+    public function render_login_form() {
+        if (is_user_logged_in()) {
+            return '<p>You are already logged in.</p>';
+        }
+
+        ob_start();
+        include WFA_PLUGIN_DIR . 'templates/login-form.php';
+        return ob_get_clean();
+    }
+
+    /**
+     * Add registration link below wp-login.php form.
+     */
+    public function add_register_link() {
+        if (!get_option('wfa_registration_enabled', false)) {
+            return;
+        }
+
+        $register_url = home_url('/register/');
+        echo '<p class="wfa-register-link" style="text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #dcdcde;">';
+        echo 'Don\'t have an account? <a href="' . esc_url($register_url) . '">Register with Workforce</a>';
+        echo '</p>';
+    }
+
+    /**
+     * Whitelist registration page from Private Website plugin.
+     */
+    public function whitelist_registration($is_restricted, $post_id) {
+        // Check if we're on the registration page
+        if (is_page('register') || strpos($_SERVER['REQUEST_URI'], '/register') !== false) {
+            return false; // Not restricted
+        }
+
+        // Also whitelist AJAX endpoints
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            $action = $_REQUEST['action'] ?? '';
+            if (in_array($action, array('wfa_verify_details', 'wfa_complete_registration'))) {
+                return false;
+            }
+        }
+
+        return $is_restricted;
+    }
+
+    /**
+     * Check if user is pending approval before allowing login.
+     */
+    public function check_user_approval($user, $password) {
+        if (is_wp_error($user)) {
+            return $user;
+        }
+
+        // Check if user has inactive status
+        if (isset($user->user_status) && $user->user_status == 1) {
+            return new WP_Error('pending_approval', 'Your account is pending administrator approval. Please wait for approval before logging in.');
+        }
+
+        return $user;
+    }
+}

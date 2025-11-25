@@ -1,0 +1,250 @@
+/* Registration and Login Forms */
+.wfa-registration-container,
+.wfa-login-container {
+    max-width: 500px;
+    margin: 40px auto;
+    padding: 30px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.wfa-registration-container h2,
+.wfa-login-container h2 {
+    margin: 0 0 20px 0;
+    font-size: 24px;
+    color: #333;
+}
+
+.wfa-registration-container p,
+.wfa-login-container p {
+    margin-bottom: 20px;
+    color: #666;
+}
+
+/* Form Groups */
+.wfa-form-group {
+    margin-bottom: 20px;
+}
+
+.wfa-form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: #333;
+}
+
+.wfa-form-group label small {
+    font-weight: normal;
+    color: #666;
+}
+
+.wfa-form-group .required {
+    color: #d63638;
+}
+
+.wfa-form-group input[type="text"],
+.wfa-form-group input[type="email"],
+.wfa-form-group input[type="tel"],
+.wfa-form-group input[type="password"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.wfa-form-group input:focus {
+    outline: none;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+.wfa-form-group small {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Verification Fields */
+.wfa-verification-fields {
+    background: #f6f7f7;
+    padding: 20px;
+    border-radius: 4px;
+    margin: 20px 0;
+}
+
+.wfa-fields-info {
+    font-weight: 600;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #fff;
+    border-left: 4px solid #ddd;
+    border-radius: 2px;
+}
+
+.wfa-fields-info.wfa-success {
+    border-left-color: #00a32a;
+    background: #f0f6f0;
+    color: #00a32a;
+}
+
+.wfa-fields-info.wfa-error {
+    border-left-color: #d63638;
+    background: #f9f0f0;
+    color: #d63638;
+}
+
+/* Form Actions */
+.wfa-form-actions {
+    margin-top: 25px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.wfa-button {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.wfa-button-primary {
+    background: #2271b1;
+    color: #fff;
+}
+
+.wfa-button-primary:hover:not(:disabled) {
+    background: #135e96;
+}
+
+.wfa-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.wfa-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #2271b1;
+    border-radius: 50%;
+    animation: wfa-spin 0.8s linear infinite;
+}
+
+@keyframes wfa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Messages */
+.wfa-message {
+    margin-top: 20px;
+}
+
+.wfa-message > div {
+    padding: 12px 15px;
+    border-radius: 4px;
+    border-left: 4px solid;
+}
+
+.wfa-message .wfa-error {
+    background: #f9f0f0;
+    border-left-color: #d63638;
+    color: #d63638;
+}
+
+.wfa-message .wfa-success {
+    background: #f0f6f0;
+    border-left-color: #00a32a;
+    color: #00a32a;
+}
+
+.wfa-message .wfa-info {
+    background: #f0f6fc;
+    border-left-color: #2271b1;
+    color: #2271b1;
+}
+
+.wfa-success-message {
+    padding: 12px 15px;
+    background: #f0f6f0;
+    border-left: 4px solid #00a32a;
+    color: #00a32a;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+/* Links */
+.wfa-login-link,
+.wfa-form-links {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+    text-align: center;
+    font-size: 14px;
+}
+
+.wfa-form-links {
+    display: flex;
+    justify-content: space-between;
+}
+
+.wfa-form-links a,
+.wfa-login-link a {
+    color: #2271b1;
+    text-decoration: none;
+}
+
+.wfa-form-links a:hover,
+.wfa-login-link a:hover {
+    text-decoration: underline;
+}
+
+/* Remember Me */
+.wfa-remember-me label {
+    display: flex;
+    align-items: center;
+    font-weight: normal;
+}
+
+.wfa-remember-me input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+/* Registration Steps */
+.wfa-registration-step {
+    min-height: 300px;
+}
+
+/* wp-login.php Registration Link */
+.wfa-register-link {
+    font-size: 14px;
+}
+
+.wfa-register-link a {
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .wfa-registration-container,
+    .wfa-login-container {
+        margin: 20px auto;
+        padding: 20px;
+    }
+
+    .wfa-form-links {
+        flex-direction: column;
+        gap: 10px;
+    }
+}
