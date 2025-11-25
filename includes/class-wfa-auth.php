@@ -46,7 +46,14 @@ class WFA_Auth {
             return;
         }
 
-        $register_url = home_url('/register/');
+        // Get custom register page or use default
+        $custom_register_page = get_option('wfa_register_page', '');
+        if (!empty($custom_register_page)) {
+            $register_url = home_url($custom_register_page);
+        } else {
+            $register_url = home_url('/register/');
+        }
+
         echo '<p class="wfa-register-link" style="text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #dcdcde;">';
         echo 'Don\'t have an account? <a href="' . esc_url($register_url) . '">Register with Workforce</a>';
         echo '</p>';
@@ -85,9 +92,28 @@ class WFA_Auth {
             return;
         }
 
+        // Allow access to custom login page
+        $custom_login_page = get_option('wfa_login_page', '');
+        if (!empty($custom_login_page)) {
+            $login_slug = trim($custom_login_page, '/');
+            if (is_page($login_slug)) {
+                return;
+            }
+        }
+
         // Allow access to registration page
-        if (is_page('register')) {
-            return;
+        $custom_register_page = get_option('wfa_register_page', '');
+        if (!empty($custom_register_page)) {
+            // Extract slug from custom register page URL
+            $register_slug = trim($custom_register_page, '/');
+            if (is_page($register_slug)) {
+                return;
+            }
+        } else {
+            // Default registration page
+            if (is_page('register')) {
+                return;
+            }
         }
 
         // Allow access to AJAX requests
@@ -108,8 +134,14 @@ class WFA_Auth {
         // Get current URL for redirect after login
         $current_url = home_url(add_query_arg(null, null));
 
-        // Redirect to login page with return URL
-        $login_url = wp_login_url($current_url);
+        // Get custom login page or use default
+        $custom_login_page = get_option('wfa_login_page', '');
+        if (!empty($custom_login_page)) {
+            $login_url = home_url($custom_login_page);
+        } else {
+            $login_url = wp_login_url($current_url);
+        }
+
         wp_safe_redirect($login_url);
         exit;
     }

@@ -95,8 +95,16 @@ class Workforce_Authentication {
         }
 
         // Also check if we're on the registration page by slug
-        if (is_page('register')) {
-            $this->admin->enqueue_registration_scripts();
+        $custom_register_page = get_option('wfa_register_page', '');
+        if (!empty($custom_register_page)) {
+            $register_slug = trim($custom_register_page, '/');
+            if (is_page($register_slug)) {
+                $this->admin->enqueue_registration_scripts();
+            }
+        } else {
+            if (is_page('register')) {
+                $this->admin->enqueue_registration_scripts();
+            }
         }
     }
 

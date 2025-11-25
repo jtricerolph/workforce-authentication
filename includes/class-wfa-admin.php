@@ -766,6 +766,8 @@ class WFA_Admin {
         $auto_approve = get_option('wfa_registration_auto_approve', false);
         $notification_email = get_option('wfa_registration_notification_email', get_option('admin_email'));
         $require_login = get_option('wfa_require_login', false);
+        $login_page = get_option('wfa_login_page', '');
+        $register_page = get_option('wfa_register_page', '');
 
         ?>
         <div class="wrap">
@@ -786,6 +788,26 @@ class WFA_Admin {
                             <p class="description">
                                 When enabled, all frontend pages will require login. The registration page will be automatically whitelisted.<br>
                                 <strong>Note:</strong> You can disable the "Private Website" plugin if you enable this option.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Custom Login Page</th>
+                        <td>
+                            <input type="text" name="login_page" value="<?php echo esc_attr($login_page); ?>" class="regular-text" placeholder="/login/">
+                            <p class="description">
+                                Custom page to redirect to for login. Leave empty to use WordPress default (wp-login.php).<br>
+                                Example: <code>/login/</code> or <code>/my-custom-login/</code>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Custom Registration Page</th>
+                        <td>
+                            <input type="text" name="register_page" value="<?php echo esc_attr($register_page); ?>" class="regular-text" placeholder="/register/">
+                            <p class="description">
+                                Custom page to link to for registration. Leave empty to use default (/register/).<br>
+                                Example: <code>/register/</code> or <code>/sign-up/</code>
                             </p>
                         </td>
                     </tr>
@@ -837,6 +859,8 @@ class WFA_Admin {
             <?php
             if (isset($_POST['wfa_save_registration_settings']) && check_admin_referer('wfa_registration_settings', 'wfa_registration_settings_nonce')) {
                 update_option('wfa_require_login', isset($_POST['require_login']) ? 1 : 0);
+                update_option('wfa_login_page', sanitize_text_field($_POST['login_page']));
+                update_option('wfa_register_page', sanitize_text_field($_POST['register_page']));
                 update_option('wfa_registration_enabled', isset($_POST['registration_enabled']) ? 1 : 0);
                 update_option('wfa_registration_auto_approve', isset($_POST['auto_approve']) ? 1 : 0);
                 update_option('wfa_registration_notification_email', sanitize_email($_POST['notification_email']));
