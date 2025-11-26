@@ -121,7 +121,13 @@ class WFA_Auth {
             return;
         }
 
-        // Allow access to REST API
+        // Allow access to REST API - check URL pattern first (before REST_REQUEST is defined)
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+        if (strpos($request_uri, '/wp-json/') !== false || (isset($_GET['rest_route']) && !empty($_GET['rest_route']))) {
+            return;
+        }
+
+        // Allow access to REST API - constant check as fallback
         if (defined('REST_REQUEST') && REST_REQUEST) {
             return;
         }
