@@ -476,6 +476,14 @@ class WFA_Registration {
     }
 
     /**
+     * Normalize name for comparison.
+     * Used only for verification matching - last_name is not stored.
+     */
+    private function normalize_name($name) {
+        return strtolower(trim($name));
+    }
+
+    /**
      * Normalize phone to E.164 format.
      * Used only for verification matching - phone is not stored.
      */
