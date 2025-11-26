@@ -212,9 +212,17 @@ class WFA_Registration {
             // Auto-approve - link user immediately
             $this->link_workforce_user($workforce_user['id'], $user_id);
 
+            // Get custom login page or use default
+            $custom_login_page = get_option('wfa_login_page', '');
+            if (!empty($custom_login_page)) {
+                $login_url = home_url($custom_login_page);
+            } else {
+                $login_url = wp_login_url();
+            }
+
             wp_send_json_success(array(
                 'message' => 'Registration successful! You can now log in.',
-                'redirect' => wp_login_url()
+                'redirect' => $login_url
             ));
         }
     }
