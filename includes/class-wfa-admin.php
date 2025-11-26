@@ -35,6 +35,13 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_get_department_permissions', array($this, 'ajax_get_department_permissions'));
         add_action('wp_ajax_wfa_grant_permission', array($this, 'ajax_grant_permission'));
         add_action('wp_ajax_wfa_revoke_permission', array($this, 'ajax_revoke_permission'));
+        add_action('wp_ajax_wfa_unlink_user', array($this, 'ajax_unlink_user'));
+        add_action('wp_ajax_wfa_delete_user', array($this, 'ajax_delete_user'));
+        add_action('wp_ajax_wfa_deactivate_user', array($this, 'ajax_deactivate_user'));
+        add_action('wp_ajax_wfa_resync_user', array($this, 'ajax_resync_user'));
+        add_action('wp_ajax_wfa_get_user_permissions', array($this, 'ajax_get_user_permissions'));
+        add_action('wp_ajax_wfa_grant_user_permission', array($this, 'ajax_grant_user_permission'));
+        add_action('wp_ajax_wfa_revoke_user_permission', array($this, 'ajax_revoke_user_permission'));
     }
 
     /**
@@ -89,6 +96,15 @@ class WFA_Admin {
             'manage_options',
             'workforce-auth-registrations',
             array($this, 'render_pending_registrations_page')
+        );
+
+        add_submenu_page(
+            'workforce-auth',
+            'Registered Users',
+            'Registered Users',
+            'manage_options',
+            'workforce-auth-users',
+            array($this, 'render_users_page')
         );
     }
 
@@ -1339,5 +1355,721 @@ class WFA_Admin {
         }
 
         wp_send_json_success('Permission revoked');
+    }
+
+    /**
+     * Render registered users page.
+     */
+    public function render_users_page() {
+        global $wpdb;
+        $workforce_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+        $dept_users_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'department_users';
+        $dept_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'departments';
+
+        // Handle search
+        $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
+
+        // Build query
+        $sql = "SELECT wu.*, u.user_login, u.user_status
+                FROM $workforce_table wu
+                LEFT JOIN {$wpdb->users} u ON wu.wp_user_id = u.ID
+                WHERE wu.pending_approval = 0";
+
+        if (!empty($search)) {
+            $sql .= $wpdb->prepare(" AND (wu.name LIKE %s OR wu.employee_id LIKE %s OR u.user_login LIKE %s OR wu.email LIKE %s)",
+                '%' . $wpdb->esc_like($search) . '%',
+                '%' . $wpdb->esc_like($search) . '%',
+                '%' . $wpdb->esc_like($search) . '%',
+                '%' . $wpdb->esc_like($search) . '%'
+            );
+        }
+
+        $sql .= " ORDER BY wu.created_at DESC";
+
+        $users = $wpdb->get_results($sql);
+
+        ?>
+        <div class="wrap">
+            <h1>Registered Users</h1>
+
+            <form method="get" action="">
+                <input type="hidden" name="page" value="workforce-auth-users">
+                <p class="search-box">
+                    <input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Search users...">
+                    <button type="submit" class="button">Search</button>
+                    <?php if ($search): ?>
+                        <a href="?page=workforce-auth-users" class="button">Clear</a>
+                    <?php endif; ?>
+                </p>
+            </form>
+
+            <?php if (empty($users)): ?>
+                <div class="notice notice-info">
+                    <p>No registered users found.</p>
+                </div>
+            <?php else: ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th scope="col" style="width: 200px;">Name</th>
+                            <th scope="col" style="width: 100px;">Employee ID</th>
+                            <th scope="col" style="width: 150px;">WordPress User</th>
+                            <th scope="col" style="width: 150px;">Registration Date</th>
+                            <th scope="col" style="width: 100px;">Status</th>
+                            <th scope="col">Departments</th>
+                            <th scope="col" style="width: 250px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($users as $user):
+                            // Get user departments
+                            $departments = $wpdb->get_results($wpdb->prepare(
+                                "SELECT d.name FROM $dept_users_table du
+                                 JOIN $dept_table d ON du.department_id = d.id
+                                 WHERE du.workforce_user_id = %d",
+                                $user->workforce_id
+                            ));
+                            $dept_names = array_map(function($d) { return $d->name; }, $departments);
+
+                            $status = isset($user->user_status) && $user->user_status == 1 ? 'Inactive' : 'Active';
+                            $status_class = $status === 'Active' ? 'active' : 'inactive';
+                        ?>
+                            <tr data-user-id="<?php echo esc_attr($user->workforce_id); ?>">
+                                <td><strong><?php echo esc_html($user->name); ?></strong></td>
+                                <td><?php echo esc_html($user->employee_id); ?></td>
+                                <td>
+                                    <?php if ($user->wp_user_id): ?>
+                                        <a href="<?php echo admin_url('user-edit.php?user_id=' . $user->wp_user_id); ?>">
+                                            <?php echo esc_html($user->user_login); ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span style="color: #999;">Not linked</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo esc_html(mysql2date('M j, Y', $user->created_at)); ?></td>
+                                <td>
+                                    <span class="wfa-status-<?php echo $status_class; ?>" style="padding: 3px 8px; border-radius: 3px; font-size: 11px; <?php echo $status === 'Active' ? 'background: #d4edda; color: #155724;' : 'background: #f8d7da; color: #721c24;'; ?>">
+                                        <?php echo esc_html($status); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php if (!empty($dept_names)): ?>
+                                        <?php echo esc_html(implode(', ', $dept_names)); ?>
+                                    <?php else: ?>
+                                        <span style="color: #999;">No departments</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <button type="button" class="button button-small wfa-manage-user-permissions"
+                                            data-user-id="<?php echo esc_attr($user->workforce_id); ?>"
+                                            data-user-name="<?php echo esc_attr($user->name); ?>">
+                                        Permissions
+                                    </button>
+                                    <button type="button" class="button button-small wfa-resync-user"
+                                            data-user-id="<?php echo esc_attr($user->workforce_id); ?>">
+                                        Resync
+                                    </button>
+                                    <?php if ($user->wp_user_id): ?>
+                                        <button type="button" class="button button-small wfa-deactivate-user"
+                                                data-user-id="<?php echo esc_attr($user->workforce_id); ?>"
+                                                data-current-status="<?php echo esc_attr($status); ?>">
+                                            <?php echo $status === 'Active' ? 'Deactivate' : 'Activate'; ?>
+                                        </button>
+                                        <button type="button" class="button button-small wfa-unlink-user"
+                                                data-user-id="<?php echo esc_attr($user->workforce_id); ?>">
+                                            Unlink
+                                        </button>
+                                    <?php endif; ?>
+                                    <button type="button" class="button button-small button-link-delete wfa-delete-user"
+                                            data-user-id="<?php echo esc_attr($user->workforce_id); ?>">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
+            <!-- User Permissions Modal -->
+            <div id="wfa-user-permissions-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; justify-content: center; align-items: center;">
+                <div style="background: #fff; padding: 30px; border-radius: 4px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                    <h2 id="wfa-user-permissions-title">Manage User Permissions</h2>
+                    <p id="wfa-user-permissions-description">Override department permissions for this user. Green = granted, Red = explicitly denied, Gray = inherited from department.</p>
+                    <div id="wfa-user-permissions-content"></div>
+                    <p style="text-align: right; margin-top: 20px;">
+                        <button type="button" class="button button-primary wfa-close-user-permissions-modal">Close</button>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            var currentUserId = null;
+
+            // Manage user permissions
+            $('.wfa-manage-user-permissions').on('click', function() {
+                currentUserId = $(this).data('user-id');
+                var userName = $(this).data('user-name');
+
+                $('#wfa-user-permissions-title').text('Permissions for "' + userName + '"');
+                $('#wfa-user-permissions-content').html('<p>Loading... <span class="spinner is-active"></span></p>');
+                $('#wfa-user-permissions-modal').css('display', 'flex');
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_get_user_permissions',
+                        nonce: wfaAdmin.nonce,
+                        user_id: currentUserId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            renderUserPermissions(response.data);
+                        } else {
+                            $('#wfa-user-permissions-content').html('<p style="color: red;">Error: ' + response.data + '</p>');
+                        }
+                    },
+                    error: function() {
+                        $('#wfa-user-permissions-content').html('<p style="color: red;">Failed to load permissions.</p>');
+                    }
+                });
+            });
+
+            function renderUserPermissions(data) {
+                var allPermissions = data.all_permissions;
+                var deptPermissions = data.department_permissions;
+                var userPermissions = data.user_permissions;
+
+                if (allPermissions.length === 0) {
+                    $('#wfa-user-permissions-content').html('<p style="color: #666; font-style: italic;">No permissions available.</p>');
+                    return;
+                }
+
+                var html = '<div style="max-height: 500px; overflow-y: auto;">';
+                var groupedByApp = {};
+
+                // Group permissions by app
+                $.each(allPermissions, function(i, perm) {
+                    if (!groupedByApp[perm.app_name]) {
+                        groupedByApp[perm.app_name] = [];
+                    }
+                    groupedByApp[perm.app_name].push(perm);
+                });
+
+                // Render grouped permissions
+                $.each(groupedByApp, function(appName, permissions) {
+                    html += '<h3 style="margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #ddd;">' + (appName || 'General') + '</h3>';
+                    $.each(permissions, function(i, perm) {
+                        var userOverride = userPermissions[perm.permission_key];
+                        var hasDept = deptPermissions.indexOf(perm.permission_key) !== -1;
+                        var status = 'inherited';
+                        var bgColor = '#f9f9f9';
+                        var statusText = '';
+
+                        if (userOverride === 1) {
+                            status = 'granted';
+                            bgColor = '#d4edda';
+                            statusText = ' <strong style="color: #155724;">[Override: Granted]</strong>';
+                        } else if (userOverride === 0) {
+                            status = 'denied';
+                            bgColor = '#f8d7da';
+                            statusText = ' <strong style="color: #721c24;">[Override: Denied]</strong>';
+                        } else if (hasDept) {
+                            statusText = ' <em style="color: #666;">(from department)</em>';
+                            bgColor = '#e7f3ff';
+                        }
+
+                        html += '<div style="padding: 12px; background: ' + bgColor + '; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 3px;">';
+                        html += '<div style="margin-bottom: 5px;"><strong>' + perm.permission_name + '</strong>' + statusText + '</div>';
+                        if (perm.permission_description) {
+                            html += '<div style="color: #666; font-size: 12px; margin-bottom: 8px;">' + perm.permission_description + '</div>';
+                        }
+                        html += '<div>';
+                        html += '<button type="button" class="button button-small wfa-grant-user-perm" data-perm-key="' + perm.permission_key + '" ' + (status === 'granted' ? 'disabled' : '') + '>Grant</button> ';
+                        html += '<button type="button" class="button button-small wfa-deny-user-perm" data-perm-key="' + perm.permission_key + '" ' + (status === 'denied' ? 'disabled' : '') + '>Deny</button> ';
+                        html += '<button type="button" class="button button-small wfa-clear-user-perm" data-perm-key="' + perm.permission_key + '" ' + (status === 'inherited' ? 'disabled' : '') + '>Clear Override</button>';
+                        html += '</div>';
+                        html += '</div>';
+                    });
+                });
+
+                html += '</div>';
+                $('#wfa-user-permissions-content').html(html);
+
+                // Attach handlers
+                $('.wfa-grant-user-perm').on('click', function() {
+                    updateUserPermission($(this).data('perm-key'), 1);
+                });
+
+                $('.wfa-deny-user-perm').on('click', function() {
+                    updateUserPermission($(this).data('perm-key'), 0);
+                });
+
+                $('.wfa-clear-user-perm').on('click', function() {
+                    updateUserPermission($(this).data('perm-key'), null);
+                });
+            }
+
+            function updateUserPermission(permKey, action) {
+                var ajaxAction = action === 1 ? 'wfa_grant_user_permission' : (action === 0 ? 'wfa_revoke_user_permission' : 'wfa_revoke_user_permission');
+
+                $('#wfa-user-permissions-content button').prop('disabled', true);
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: ajaxAction,
+                        nonce: wfaAdmin.nonce,
+                        user_id: currentUserId,
+                        permission_key: permKey,
+                        is_granted: action
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Reload permissions
+                            $('.wfa-manage-user-permissions[data-user-id="' + currentUserId + '"]').trigger('click');
+                        } else {
+                            alert('Error: ' + response.data);
+                            $('#wfa-user-permissions-content button').prop('disabled', false);
+                        }
+                    },
+                    error: function() {
+                        alert('Failed to update permission.');
+                        $('#wfa-user-permissions-content button').prop('disabled', false);
+                    }
+                });
+            }
+
+            $('.wfa-close-user-permissions-modal, #wfa-user-permissions-modal').on('click', function(e) {
+                if (e.target === this) {
+                    $('#wfa-user-permissions-modal').hide();
+                }
+            });
+
+            // Resync user
+            $('.wfa-resync-user').on('click', function() {
+                var button = $(this);
+                var userId = button.data('user-id');
+
+                if (!confirm('Resync this user from Workforce API?')) {
+                    return;
+                }
+
+                button.prop('disabled', true).text('Resyncing...');
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_resync_user',
+                        nonce: wfaAdmin.nonce,
+                        user_id: userId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert(response.data);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + response.data);
+                            button.prop('disabled', false).text('Resync');
+                        }
+                    },
+                    error: function() {
+                        alert('Failed to resync user.');
+                        button.prop('disabled', false).text('Resync');
+                    }
+                });
+            });
+
+            // Deactivate/Activate user
+            $('.wfa-deactivate-user').on('click', function() {
+                var button = $(this);
+                var userId = button.data('user-id');
+                var currentStatus = button.data('current-status');
+                var newStatus = currentStatus === 'Active' ? 'deactivate' : 'activate';
+
+                if (!confirm('Are you sure you want to ' + newStatus + ' this user?')) {
+                    return;
+                }
+
+                button.prop('disabled', true);
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_deactivate_user',
+                        nonce: wfaAdmin.nonce,
+                        user_id: userId,
+                        new_status: newStatus
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert(response.data);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + response.data);
+                            button.prop('disabled', false);
+                        }
+                    },
+                    error: function() {
+                        alert('Failed to update user status.');
+                        button.prop('disabled', false);
+                    }
+                });
+            });
+
+            // Unlink user
+            $('.wfa-unlink-user').on('click', function() {
+                var button = $(this);
+                var userId = button.data('user-id');
+
+                if (!confirm('Unlink this user from Workforce? The WordPress user will remain but will be standalone.')) {
+                    return;
+                }
+
+                button.prop('disabled', true);
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_unlink_user',
+                        nonce: wfaAdmin.nonce,
+                        user_id: userId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert(response.data);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + response.data);
+                            button.prop('disabled', false);
+                        }
+                    },
+                    error: function() {
+                        alert('Failed to unlink user.');
+                        button.prop('disabled', false);
+                    }
+                });
+            });
+
+            // Delete user
+            $('.wfa-delete-user').on('click', function() {
+                var button = $(this);
+                var userId = button.data('user-id');
+
+                if (!confirm('Delete this user completely? This will remove both the Workforce association and WordPress user account.')) {
+                    return;
+                }
+
+                button.prop('disabled', true);
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_delete_user',
+                        nonce: wfaAdmin.nonce,
+                        user_id: userId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert(response.data);
+                            location.reload();
+                        } else {
+                            alert('Error: ' + response.data);
+                            button.prop('disabled', false);
+                        }
+                    },
+                    error: function() {
+                        alert('Failed to delete user.');
+                        button.prop('disabled', false);
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+
+    /**
+     * AJAX: Get user permissions (department + user overrides).
+     */
+    public function ajax_get_user_permissions() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $user_id = intval($_POST['user_id'] ?? 0);
+
+        if (!$user_id) {
+            wp_send_json_error('Invalid user ID');
+        }
+
+        global $wpdb;
+        $dept_users_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'department_users';
+        $user_perms_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'user_permissions';
+
+        // Get all permissions
+        $all_permissions = wfa()->permissions->get_permissions();
+
+        // Get department permissions for this user
+        $dept_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT department_id FROM $dept_users_table WHERE workforce_user_id = %d",
+            $user_id
+        ));
+
+        $dept_permissions = array();
+        foreach ($dept_ids as $dept_id) {
+            $dept_perms = wfa()->permissions->get_department_permissions($dept_id);
+            $dept_permissions = array_merge($dept_permissions, $dept_perms);
+        }
+        $dept_permissions = array_unique($dept_permissions);
+
+        // Get user-specific permission overrides
+        $user_perms = $wpdb->get_results($wpdb->prepare(
+            "SELECT permission_key, is_granted FROM $user_perms_table WHERE workforce_user_id = %d",
+            $user_id
+        ), OBJECT_K);
+
+        $user_permissions = array();
+        foreach ($user_perms as $key => $perm) {
+            $user_permissions[$key] = (int)$perm->is_granted;
+        }
+
+        wp_send_json_success(array(
+            'all_permissions' => $all_permissions,
+            'department_permissions' => $dept_permissions,
+            'user_permissions' => $user_permissions
+        ));
+    }
+
+    /**
+     * AJAX: Grant permission to user (override).
+     */
+    public function ajax_grant_user_permission() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $user_id = intval($_POST['user_id'] ?? 0);
+        $permission_key = sanitize_text_field($_POST['permission_key'] ?? '');
+        $is_granted = isset($_POST['is_granted']) ? intval($_POST['is_granted']) : 1;
+
+        if (!$user_id || !$permission_key) {
+            wp_send_json_error('Invalid parameters');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'user_permissions';
+
+        if ($is_granted === null) {
+            // Clear override
+            $wpdb->delete($table, array(
+                'workforce_user_id' => $user_id,
+                'permission_key' => $permission_key
+            ), array('%d', '%s'));
+            wp_send_json_success('Permission override cleared');
+        } else {
+            // Insert or update
+            $wpdb->replace($table, array(
+                'workforce_user_id' => $user_id,
+                'permission_key' => $permission_key,
+                'is_granted' => $is_granted,
+                'granted_at' => current_time('mysql')
+            ), array('%d', '%s', '%d', '%s'));
+
+            wp_send_json_success($is_granted === 1 ? 'Permission granted' : 'Permission denied');
+        }
+    }
+
+    /**
+     * AJAX: Revoke permission from user (set as denied or clear override).
+     */
+    public function ajax_revoke_user_permission() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $user_id = intval($_POST['user_id'] ?? 0);
+        $permission_key = sanitize_text_field($_POST['permission_key'] ?? '');
+        $is_granted = isset($_POST['is_granted']) ? $_POST['is_granted'] : null;
+
+        if (!$user_id || !$permission_key) {
+            wp_send_json_error('Invalid parameters');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'user_permissions';
+
+        if ($is_granted === null || $is_granted === 'null') {
+            // Clear override
+            $wpdb->delete($table, array(
+                'workforce_user_id' => $user_id,
+                'permission_key' => $permission_key
+            ), array('%d', '%s'));
+            wp_send_json_success('Permission override cleared');
+        } else {
+            // Set as denied (0) or granted (1)
+            $wpdb->replace($table, array(
+                'workforce_user_id' => $user_id,
+                'permission_key' => $permission_key,
+                'is_granted' => intval($is_granted),
+                'granted_at' => current_time('mysql')
+            ), array('%d', '%s', '%d', '%s'));
+
+            wp_send_json_success(intval($is_granted) === 1 ? 'Permission granted' : 'Permission denied');
+        }
+    }
+
+    /**
+     * AJAX: Unlink user from Workforce.
+     */
+    public function ajax_unlink_user() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $workforce_user_id = intval($_POST['user_id'] ?? 0);
+
+        if (!$workforce_user_id) {
+            wp_send_json_error('Invalid user ID');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        // Delete from workforce_users table (keeps WP user)
+        $wpdb->delete($table, array('workforce_id' => $workforce_user_id), array('%d'));
+
+        wp_send_json_success('User unlinked from Workforce. WordPress user remains.');
+    }
+
+    /**
+     * AJAX: Delete user completely.
+     */
+    public function ajax_delete_user() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $workforce_user_id = intval($_POST['user_id'] ?? 0);
+
+        if (!$workforce_user_id) {
+            wp_send_json_error('Invalid user ID');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        $user = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE workforce_id = %d", $workforce_user_id));
+
+        if (!$user) {
+            wp_send_json_error('User not found');
+        }
+
+        // Delete WordPress user if exists
+        if ($user->wp_user_id) {
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+            wp_delete_user($user->wp_user_id);
+        }
+
+        // Delete from workforce_users table
+        $wpdb->delete($table, array('workforce_id' => $workforce_user_id), array('%d'));
+
+        wp_send_json_success('User deleted successfully');
+    }
+
+    /**
+     * AJAX: Deactivate/Activate user.
+     */
+    public function ajax_deactivate_user() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $workforce_user_id = intval($_POST['user_id'] ?? 0);
+        $new_status = sanitize_text_field($_POST['new_status'] ?? '');
+
+        if (!$workforce_user_id || !in_array($new_status, array('activate', 'deactivate'))) {
+            wp_send_json_error('Invalid parameters');
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        $user = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE workforce_id = %d", $workforce_user_id));
+
+        if (!$user || !$user->wp_user_id) {
+            wp_send_json_error('User not found');
+        }
+
+        $user_status = $new_status === 'deactivate' ? 1 : 0;
+
+        wp_update_user(array(
+            'ID' => $user->wp_user_id,
+            'user_status' => $user_status
+        ));
+
+        wp_send_json_success('User ' . $new_status . 'd successfully');
+    }
+
+    /**
+     * AJAX: Resync user from Workforce API.
+     */
+    public function ajax_resync_user() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $workforce_user_id = intval($_POST['user_id'] ?? 0);
+
+        if (!$workforce_user_id) {
+            wp_send_json_error('Invalid user ID');
+        }
+
+        // Get user data from API
+        $user_data = $this->api->request("users/{$workforce_user_id}");
+
+        if (is_wp_error($user_data)) {
+            wp_send_json_error($user_data->get_error_message());
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
+
+        // Update user data
+        $wpdb->update(
+            $table,
+            array(
+                'name' => $user_data['name'] ?? '',
+                'employee_id' => $user_data['employee_id'] ?? '',
+                'last_synced' => current_time('mysql')
+            ),
+            array('workforce_id' => $workforce_user_id),
+            array('%s', '%s', '%s'),
+            array('%d')
+        );
+
+        wp_send_json_success('User resynced successfully');
     }
 }
