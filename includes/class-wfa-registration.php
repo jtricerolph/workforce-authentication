@@ -273,7 +273,7 @@ class WFA_Registration {
         $matches = 0;
 
         if (!empty($last_name)) {
-            $user_last_name = $this->normalize_name($user['last_name'] ?? '');
+            $user_last_name = $this->normalize_name($user['legal_last_name'] ?? '');
             if ($user_last_name === $last_name) {
                 $matches++;
                 error_log('WFA Registration: Last name matched');
@@ -314,7 +314,7 @@ class WFA_Registration {
         }
 
         if (!empty($postcode)) {
-            $user_postcode = $this->normalize_postcode($user['postcode'] ?? '');
+            $user_postcode = $this->normalize_postcode($user['address']['postcode'] ?? '');
             if ($user_postcode === $postcode) {
                 $matches++;
                 error_log('WFA Registration: Postcode matched');
