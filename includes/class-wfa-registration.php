@@ -83,14 +83,20 @@ class WFA_Registration {
         $users = $this->get_workforce_users();
         if (is_wp_error($users)) {
             $this->log_attempt();
+            error_log('WFA Registration Error: ' . $users->get_error_message());
             wp_send_json_error('Unable to connect to Workforce. Please try again later.');
         }
+
+        // Debug logging
+        error_log('WFA Registration: Found ' . count($users) . ' users from API');
+        error_log('WFA Registration: Looking for email: ' . $email);
 
         // Try to match user
         $matched_user = $this->match_user($email, $last_name, $employee_id, $date_of_birth, $phone, $passcode, $postcode, $users);
 
         if (!$matched_user) {
             $this->log_attempt();
+            error_log('WFA Registration: No match found for email: ' . $email);
             wp_send_json_error('The verification details could not be matched. Please check your information and try again.');
         }
 
@@ -249,6 +255,9 @@ class WFA_Registration {
                 continue;
             }
 
+            error_log('WFA Registration: Found matching email in API: ' . $email);
+            error_log('WFA Registration: User data from API: ' . print_r($user, true));
+
             // Count matching optional fields
             $matches = 0;
 
@@ -296,8 +305,12 @@ class WFA_Registration {
             }
 
             // If at least 3 fields match, return this user
+            error_log('WFA Registration: Total matches for this user: ' . $matches);
             if ($matches >= 3) {
+                error_log('WFA Registration: SUCCESS - User matched with ' . $matches . ' fields');
                 return $user;
+            } else {
+                error_log('WFA Registration: FAIL - Only ' . $matches . ' fields matched (need 3)');
             }
         }
 
