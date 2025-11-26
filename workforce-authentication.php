@@ -156,6 +156,101 @@ function wfa() {
 }
 
 /**
+ * =============================================================================
+ * PERMISSIONS SYSTEM - QUICK START GUIDE
+ * =============================================================================
+ *
+ * The Workforce Authentication plugin provides a flexible permissions system
+ * that allows apps/plugins to register custom permissions and check if users
+ * have those permissions based on their department membership or user-level overrides.
+ *
+ * HOW TO REGISTER PERMISSIONS IN YOUR APP/PLUGIN:
+ *
+ * Step 1: Hook into 'wfa_register_permissions' action
+ * ------------------------------------------------
+ * Add this to your plugin's main file or functions.php:
+ *
+ *     add_action('wfa_register_permissions', 'my_app_register_permissions');
+ *
+ *     function my_app_register_permissions() {
+ *         // Register your permissions here
+ *         wfa_register_permission(
+ *             'my_app_view_reports',           // Unique permission key
+ *             'View Reports',                   // Human-readable name
+ *             'Allow users to view reports',    // Description
+ *             'My App'                          // App name (for grouping)
+ *         );
+ *
+ *         wfa_register_permission(
+ *             'my_app_edit_settings',
+ *             'Edit Settings',
+ *             'Allow users to modify app settings',
+ *             'My App'
+ *         );
+ *     }
+ *
+ * Step 2: Check permissions in your code
+ * ---------------------------------------
+ * Use the wfa_user_can() helper function to check if a user has a permission:
+ *
+ *     // Check current user
+ *     if (wfa_user_can('my_app_view_reports')) {
+ *         // User has permission - show reports
+ *         echo '<div class="reports">...</div>';
+ *     }
+ *
+ *     // Check specific user by ID
+ *     if (wfa_user_can('my_app_edit_settings', $user_id)) {
+ *         // User can edit settings
+ *     }
+ *
+ * Step 3: Assign permissions via admin interface
+ * -----------------------------------------------
+ * Once registered, permissions appear in:
+ * 1. Workforce Auth → Teams → Click "Permissions" on any department
+ *    (Department permissions are inherited by all users in that department)
+ *
+ * 2. Workforce Auth → Registered Users → Click "Permissions" on any user
+ *    (User-level overrides that can grant or deny permissions)
+ *
+ * PERMISSION HIERARCHY:
+ * --------------------
+ * 1. User-level DENY override (blocks access even if department grants it)
+ * 2. User-level GRANT override (grants access even if department doesn't have it)
+ * 3. Department permissions (inherited from user's departments)
+ * 4. No permission (default - access denied)
+ *
+ * ADVANCED: Get all user permissions
+ * ----------------------------------
+ *     $permissions = wfa_get_user_permissions(); // Current user
+ *     $permissions = wfa_get_user_permissions($user_id); // Specific user
+ *     // Returns array of permission keys: ['my_app_view_reports', 'my_app_edit_settings']
+ *
+ * EXAMPLE: Complete PWA app integration
+ * --------------------------------------
+ *     // In your-pwa-app.php
+ *     add_action('wfa_register_permissions', 'my_pwa_register_permissions');
+ *
+ *     function my_pwa_register_permissions() {
+ *         wfa_register_permission('pwa_access_dashboard', 'Access Dashboard', 'View the main dashboard', 'My PWA');
+ *         wfa_register_permission('pwa_manage_content', 'Manage Content', 'Create and edit content', 'My PWA');
+ *         wfa_register_permission('pwa_view_analytics', 'View Analytics', 'Access analytics and reports', 'My PWA');
+ *     }
+ *
+ *     // In your dashboard page
+ *     if (!wfa_user_can('pwa_access_dashboard')) {
+ *         wp_die('You do not have permission to access this page.');
+ *     }
+ *
+ *     // Show content management UI only to authorized users
+ *     if (wfa_user_can('pwa_manage_content')) {
+ *         echo '<button class="edit-content">Edit</button>';
+ *     }
+ *
+ * =============================================================================
+ */
+
+/**
  * Helper function to register a permission.
  *
  * @param string $permission_key Unique key for the permission.
