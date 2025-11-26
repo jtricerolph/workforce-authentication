@@ -3,7 +3,7 @@
  * Plugin Name: Workforce Authentication
  * Plugin URI: https://github.com/JTR/workforce-authentication
  * Description: Integrates Workforce (Tanda) HR system for employee authentication and permissions management.
- * Version: 1.0.5
+ * Version: 1.0.6
  * Author: JTR
  * License: GPL-2.0+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('WFA_VERSION', '1.0.5');
+define('WFA_VERSION', '1.0.6');
 define('WFA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WFA_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WFA_TABLE_PREFIX', 'workforce_');

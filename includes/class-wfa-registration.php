@@ -79,20 +79,24 @@ class WFA_Registration {
             wp_send_json_error('The verification details could not be matched. Please check your information and try again.');
         }
 
-        // Get all users from Workforce API
-        $users = $this->get_workforce_users();
-        if (is_wp_error($users)) {
+        // Get user from Workforce API by email
+        $workforce_user = $this->get_workforce_user_by_email($email);
+        if (is_wp_error($workforce_user)) {
             $this->log_attempt();
-            error_log('WFA Registration Error: ' . $users->get_error_message());
+            error_log('WFA Registration Error: ' . $workforce_user->get_error_message());
             wp_send_json_error('Unable to connect to Workforce. Please try again later.');
         }
 
-        // Debug logging
-        error_log('WFA Registration: Found ' . count($users) . ' users from API');
-        error_log('WFA Registration: Looking for email: ' . $email);
+        if (!$workforce_user) {
+            $this->log_attempt();
+            error_log('WFA Registration: No user found for email: ' . $email);
+            wp_send_json_error('The verification details could not be matched. Please check your information and try again.');
+        }
 
-        // Try to match user
-        $matched_user = $this->match_user($email, $last_name, $employee_id, $date_of_birth, $phone, $passcode, $postcode, $users);
+        error_log('WFA Registration: Found user from API: ' . print_r($workforce_user, true));
+
+        // Verify user against additional fields (need 3+ matches)
+        $matched_user = $this->verify_user_fields($workforce_user, $last_name, $employee_id, $date_of_birth, $phone, $passcode, $postcode);
 
         if (!$matched_user) {
             $this->log_attempt();
@@ -220,111 +224,112 @@ class WFA_Registration {
     }
 
     /**
-     * Get all users from selected locations via Workforce API.
+     * Get user from Workforce API by email.
+     *
+     * @param string $email User email to search for.
+     * @return array|null|WP_Error User data array, null if not found, or WP_Error on failure.
      */
-    private function get_workforce_users() {
-        $selected_locations = get_option('wfa_selected_locations', array());
-        error_log('WFA Registration: Selected locations: ' . print_r($selected_locations, true));
+    private function get_workforce_user_by_email($email) {
+        error_log('WFA Registration: Requesting user for email: ' . $email);
 
-        if (empty($selected_locations)) {
-            return new WP_Error('no_locations', 'No locations configured');
+        $response = $this->api->request('GET', '/api/v2/users', array('email' => $email));
+
+        if (is_wp_error($response)) {
+            error_log('WFA Registration: API error: ' . $response->get_error_message());
+            return $response;
         }
 
-        $all_users = array();
+        error_log('WFA Registration: API response: ' . print_r($response, true));
 
-        foreach ($selected_locations as $location_id) {
-            error_log('WFA Registration: Requesting users for location_id: ' . $location_id);
-            $response = $this->api->request('GET', '/api/v2/users', array('location_id' => $location_id));
-
-            if (is_wp_error($response)) {
-                error_log('WFA Registration: API error for location ' . $location_id . ': ' . $response->get_error_message());
-                continue;
-            }
-
-            error_log('WFA Registration: API response for location ' . $location_id . ': ' . print_r($response, true));
-
-            if (isset($response['data']) && is_array($response['data'])) {
-                error_log('WFA Registration: Found ' . count($response['data']) . ' users for location ' . $location_id);
-                $all_users = array_merge($all_users, $response['data']);
-            } else {
-                error_log('WFA Registration: No data array in response for location ' . $location_id);
-            }
+        // API returns array of users in 'data' field
+        if (isset($response['data']) && is_array($response['data']) && !empty($response['data'])) {
+            // Should be single user since we filtered by email
+            $user = $response['data'][0];
+            error_log('WFA Registration: Found user in API response');
+            return $user;
         }
 
-        return $all_users;
+        error_log('WFA Registration: No user found in API response');
+        return null;
     }
 
     /**
-     * Match user against Workforce data.
+     * Verify user fields against provided verification data.
+     * Email is already matched - this verifies at least 3 additional fields.
+     *
+     * @param array $user Workforce user data from API.
+     * @param string $last_name Last name to verify.
+     * @param string $employee_id Employee ID to verify.
+     * @param string $date_of_birth Date of birth to verify.
+     * @param string $phone Phone to verify.
+     * @param string $passcode Passcode to verify.
+     * @param string $postcode Postcode to verify.
+     * @return array|null User data if verified, null otherwise.
      */
-    private function match_user($email, $last_name, $employee_id, $date_of_birth, $phone, $passcode, $postcode, $users) {
-        foreach ($users as $user) {
-            // Email must match
-            $user_email = $this->normalize_email($user['email'] ?? '');
-            if ($user_email !== $email) {
-                continue;
-            }
+    private function verify_user_fields($user, $last_name, $employee_id, $date_of_birth, $phone, $passcode, $postcode) {
+        error_log('WFA Registration: Verifying additional fields for user');
 
-            error_log('WFA Registration: Found matching email in API: ' . $email);
-            error_log('WFA Registration: User data from API: ' . print_r($user, true));
+        // Count matching optional fields
+        $matches = 0;
 
-            // Count matching optional fields
-            $matches = 0;
-
-            if (!empty($last_name)) {
-                $user_last_name = $this->normalize_name($user['last_name'] ?? '');
-                if ($user_last_name === $last_name) {
-                    $matches++;
-                }
-            }
-
-            if (!empty($employee_id)) {
-                $user_employee_id = trim($user['employee_id'] ?? '');
-                if ($user_employee_id === $employee_id) {
-                    $matches++;
-                }
-            }
-
-            if (!empty($date_of_birth)) {
-                $user_dob = $this->normalize_date($user['date_of_birth'] ?? '');
-                if ($user_dob === $date_of_birth) {
-                    $matches++;
-                }
-            }
-
-            if (!empty($phone)) {
-                $user_phone = $this->normalize_phone($user['phone'] ?? '');
-                $user_normalized_phone = trim($user['normalised_phone'] ?? ''); // Already normalized by API
-                if ($user_phone === $phone || $user_normalized_phone === $phone) {
-                    $matches++;
-                }
-            }
-
-            if (!empty($passcode)) {
-                $user_passcode = trim($user['passcode'] ?? '');
-                if ($user_passcode === $passcode) {
-                    $matches++;
-                }
-            }
-
-            if (!empty($postcode)) {
-                $user_postcode = $this->normalize_postcode($user['postcode'] ?? '');
-                if ($user_postcode === $postcode) {
-                    $matches++;
-                }
-            }
-
-            // If at least 3 fields match, return this user
-            error_log('WFA Registration: Total matches for this user: ' . $matches);
-            if ($matches >= 3) {
-                error_log('WFA Registration: SUCCESS - User matched with ' . $matches . ' fields');
-                return $user;
-            } else {
-                error_log('WFA Registration: FAIL - Only ' . $matches . ' fields matched (need 3)');
+        if (!empty($last_name)) {
+            $user_last_name = $this->normalize_name($user['last_name'] ?? '');
+            if ($user_last_name === $last_name) {
+                $matches++;
+                error_log('WFA Registration: Last name matched');
             }
         }
 
-        return null;
+        if (!empty($employee_id)) {
+            $user_employee_id = trim($user['employee_id'] ?? '');
+            if ($user_employee_id === $employee_id) {
+                $matches++;
+                error_log('WFA Registration: Employee ID matched');
+            }
+        }
+
+        if (!empty($date_of_birth)) {
+            $user_dob = $this->normalize_date($user['date_of_birth'] ?? '');
+            if ($user_dob === $date_of_birth) {
+                $matches++;
+                error_log('WFA Registration: Date of birth matched');
+            }
+        }
+
+        if (!empty($phone)) {
+            $user_phone = $this->normalize_phone($user['phone'] ?? '');
+            $user_normalized_phone = trim($user['normalised_phone'] ?? ''); // Already normalized by API
+            if ($user_phone === $phone || $user_normalized_phone === $phone) {
+                $matches++;
+                error_log('WFA Registration: Phone matched');
+            }
+        }
+
+        if (!empty($passcode)) {
+            $user_passcode = trim($user['passcode'] ?? '');
+            if ($user_passcode === $passcode) {
+                $matches++;
+                error_log('WFA Registration: Passcode matched');
+            }
+        }
+
+        if (!empty($postcode)) {
+            $user_postcode = $this->normalize_postcode($user['postcode'] ?? '');
+            if ($user_postcode === $postcode) {
+                $matches++;
+                error_log('WFA Registration: Postcode matched');
+            }
+        }
+
+        // If at least 3 fields match, return this user
+        error_log('WFA Registration: Total matches: ' . $matches . ' (need 3)');
+        if ($matches >= 3) {
+            error_log('WFA Registration: SUCCESS - User verified with ' . $matches . ' matching fields');
+            return $user;
+        } else {
+            error_log('WFA Registration: FAIL - Only ' . $matches . ' fields matched');
+            return null;
+        }
     }
 
     /**
