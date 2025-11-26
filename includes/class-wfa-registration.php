@@ -241,10 +241,10 @@ class WFA_Registration {
 
         error_log('WFA Registration: API response: ' . print_r($response, true));
 
-        // API returns array of users in 'data' field
-        if (isset($response['data']) && is_array($response['data']) && !empty($response['data'])) {
+        // API returns array of users directly (not wrapped in 'data' field)
+        if (is_array($response) && !empty($response)) {
             // Should be single user since we filtered by email
-            $user = $response['data'][0];
+            $user = $response[0];
             error_log('WFA Registration: Found user in API response');
             return $user;
         }
