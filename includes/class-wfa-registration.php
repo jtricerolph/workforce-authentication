@@ -232,7 +232,7 @@ class WFA_Registration {
     private function get_workforce_user_by_email($email) {
         error_log('WFA Registration: Requesting user for email: ' . $email);
 
-        $response = $this->api->request('GET', '/api/v2/users', array('email' => $email));
+        $response = $this->api->request('/api/v2/users', 'GET', array('email' => $email));
 
         if (is_wp_error($response)) {
             error_log('WFA Registration: API error: ' . $response->get_error_message());
