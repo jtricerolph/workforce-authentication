@@ -434,7 +434,8 @@ class WFA_Registration {
             return true;
         }
 
-        return $record->attempts < 3;
+        $limit = get_option('wfa_registration_rate_limit', 50);
+        return $record->attempts < $limit;
     }
 
     /**

@@ -896,6 +896,7 @@ class WFA_Admin {
         $registration_enabled = get_option('wfa_registration_enabled', false);
         $auto_approve = get_option('wfa_registration_auto_approve', false);
         $notification_email = get_option('wfa_registration_notification_email', get_option('admin_email'));
+        $rate_limit = get_option('wfa_registration_rate_limit', 50);
         $require_login = get_option('wfa_require_login', false);
         $login_page = get_option('wfa_login_page', '');
         $register_page = get_option('wfa_register_page', '');
@@ -980,6 +981,17 @@ class WFA_Admin {
                             </p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row">Rate Limit (per hour)</th>
+                        <td>
+                            <input type="number" name="rate_limit" value="<?php echo esc_attr($rate_limit); ?>" min="1" max="1000" class="small-text">
+                            <p class="description">
+                                Maximum registration attempts allowed per IP address per hour.<br>
+                                <strong>Recommended:</strong> Set to 50-100 during initial rollout when multiple employees may register from the same workplace IP.<br>
+                                Can be reduced to 5-10 once most staff have registered for better security.
+                            </p>
+                        </td>
+                    </tr>
                 </table>
 
                 <p class="submit">
@@ -995,6 +1007,11 @@ class WFA_Admin {
                 update_option('wfa_registration_enabled', isset($_POST['registration_enabled']) ? 1 : 0);
                 update_option('wfa_registration_auto_approve', isset($_POST['auto_approve']) ? 1 : 0);
                 update_option('wfa_registration_notification_email', sanitize_email($_POST['notification_email']));
+
+                // Sanitize and validate rate limit (1-1000)
+                $rate_limit = max(1, min(1000, intval($_POST['rate_limit'] ?? 50)));
+                update_option('wfa_registration_rate_limit', $rate_limit);
+
                 echo '<div class="notice notice-success"><p>Settings saved successfully.</p></div>';
             }
             ?>

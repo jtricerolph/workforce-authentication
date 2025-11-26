@@ -145,6 +145,7 @@ class WFA_Activator {
             'wfa_registration_enabled' => false,
             'wfa_registration_auto_approve' => false,
             'wfa_registration_notification_email' => get_option('admin_email'),
+            'wfa_registration_rate_limit' => 50,
             'wfa_require_login' => false,
             'wfa_login_page' => '',
             'wfa_register_page' => '',
