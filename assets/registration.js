@@ -75,8 +75,9 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    // Store token and show step 2
+                    // Store token and populate suggested username
                     $('#wfa_token').val(response.data.token);
+                    $('#wfa_username').val(response.data.suggested_username || '');
                     $('#wfa-step-1').hide();
                     $('#wfa-step-2').show();
                 } else {
@@ -103,8 +104,15 @@ jQuery(document).ready(function($) {
         var $spinner = $form.find('.wfa-spinner');
         var $message = $('#wfa-password-message');
 
+        var username = $('#wfa_username').val().trim();
         var password = $('#wfa_password').val();
         var passwordConfirm = $('#wfa_password_confirm').val();
+
+        // Validate username
+        if (username === '') {
+            $message.html('<div class="wfa-error">Please enter a username.</div>');
+            return;
+        }
 
         // Validate passwords
         if (password.length < 8) {
@@ -128,6 +136,7 @@ jQuery(document).ready(function($) {
                 action: 'wfa_complete_registration',
                 nonce: $form.find('[name="wfa_registration_nonce_step2"]').val(),
                 token: $('#wfa_token').val(),
+                username: username,
                 password: password,
                 password_confirm: passwordConfirm
             },

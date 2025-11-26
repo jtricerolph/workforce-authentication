@@ -110,13 +110,9 @@ class WFA_Sync {
                 $user_data = array(
                     'workforce_id' => $user['id'],
                     'email' => $this->normalize_email($user['email'] ?? ''),
-                    'last_name' => $this->normalize_name($user['last_name'] ?? ''),
+                    'name' => trim($user['name'] ?? ''),
                     'employee_id' => trim($user['employee_id'] ?? ''),
-                    'phone' => trim($user['phone'] ?? ''),
-                    'normalized_phone' => trim($user['normalised_phone'] ?? ''), // Already normalized by API
-                    'date_of_birth' => $this->normalize_date_for_db($user['date_of_birth'] ?? ''),
                     'passcode' => trim($user['passcode'] ?? ''),
-                    'postcode' => $this->normalize_postcode($user['postcode'] ?? ''),
                     'last_synced' => current_time('mysql')
                 );
 
@@ -126,7 +122,7 @@ class WFA_Sync {
                         $table,
                         $user_data,
                         array('workforce_id' => $user['id']),
-                        array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'),
+                        array('%d', '%s', '%s', '%s', '%s', '%s'),
                         array('%d')
                     );
                 } else {
@@ -137,7 +133,7 @@ class WFA_Sync {
                             'wp_user_id' => null,
                             'pending_approval' => 0
                         )),
-                        array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d')
+                        array('%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d')
                     );
                 }
 
@@ -153,79 +149,6 @@ class WFA_Sync {
      */
     private function normalize_email($email) {
         return strtolower(trim($email));
-    }
-
-    /**
-     * Normalize name.
-     */
-    private function normalize_name($name) {
-        return strtolower(trim($name));
-    }
-
-    /**
-     * Normalize phone to E.164 format.
-     */
-    private function normalize_phone($phone) {
-        // Remove all non-numeric characters
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-
-        if (empty($phone)) {
-            return '';
-        }
-
-        // If starts with 0, assume UK and add +44
-        if (substr($phone, 0, 1) === '0') {
-            $phone = '44' . substr($phone, 1);
-        }
-
-        // Add + prefix
-        if (substr($phone, 0, 1) !== '+') {
-            $phone = '+' . $phone;
-        }
-
-        return $phone;
-    }
-
-    /**
-     * Normalize date from DD/MM/YYYY or other formats to YYYY-MM-DD.
-     */
-    private function normalize_date($date) {
-        if (empty($date)) {
-            return '';
-        }
-
-        // Try DD/MM/YYYY format first
-        if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $date, $matches)) {
-            return sprintf('%04d-%02d-%02d', $matches[3], $matches[2], $matches[1]);
-        }
-
-        // Try YYYY-MM-DD format
-        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $date, $matches)) {
-            return sprintf('%04d-%02d-%02d', $matches[1], $matches[2], $matches[3]);
-        }
-
-        // Try other formats with strtotime
-        $timestamp = strtotime($date);
-        if ($timestamp) {
-            return date('Y-m-d', $timestamp);
-        }
-
-        return '';
-    }
-
-    /**
-     * Normalize date for database storage.
-     */
-    private function normalize_date_for_db($date) {
-        $normalized = $this->normalize_date($date);
-        return $normalized ? $normalized : null;
-    }
-
-    /**
-     * Normalize postcode.
-     */
-    private function normalize_postcode($postcode) {
-        return strtoupper(str_replace(' ', '', trim($postcode)));
     }
 
     /**

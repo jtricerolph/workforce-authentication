@@ -71,11 +71,17 @@ if (!defined('ABSPATH')) {
     <!-- Step 2: Password Creation -->
     <div id="wfa-step-2" class="wfa-registration-step" style="display: none;">
         <p class="wfa-success-message">✓ Details verified successfully!</p>
-        <p>Please create a password for your account:</p>
+        <p>Please choose your username and create a password:</p>
 
         <form id="wfa-password-form">
             <?php wp_nonce_field('wfa_registration_nonce', 'wfa_registration_nonce_step2'); ?>
             <input type="hidden" id="wfa_token" name="token" value="">
+
+            <div class="wfa-form-group">
+                <label for="wfa_username">Username <span class="required">*</span></label>
+                <input type="text" id="wfa_username" name="username" required>
+                <small>You can customize this to something more memorable</small>
+            </div>
 
             <div class="wfa-form-group">
                 <label for="wfa_password">Password <span class="required">*</span></label>

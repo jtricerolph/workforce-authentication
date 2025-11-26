@@ -101,16 +101,21 @@ class WFA_Registration {
             wp_send_json_error('The verification details could not be matched. Please check your information and try again.');
         }
 
+        // Generate suggested username from name field
+        $suggested_username = $this->generate_suggested_username($matched_user['name'] ?? $email);
+
         // Create temporary token
         $token = wp_generate_password(32, false);
         set_transient('wfa_reg_' . $token, array(
             'email' => $email,
             'workforce_user' => $matched_user,
+            'suggested_username' => $suggested_username,
             'verified_at' => time()
         ), 600); // 10 minutes
 
         wp_send_json_success(array(
             'token' => $token,
+            'suggested_username' => $suggested_username,
             'message' => 'Details verified! Please create your password.'
         ));
     }
@@ -124,6 +129,7 @@ class WFA_Registration {
         $token = sanitize_text_field($_POST['token'] ?? '');
         $password = $_POST['password'] ?? '';
         $password_confirm = $_POST['password_confirm'] ?? '';
+        $username = sanitize_text_field($_POST['username'] ?? '');
 
         if (empty($token)) {
             wp_send_json_error('Invalid registration session.');
@@ -133,6 +139,17 @@ class WFA_Registration {
         $verification = get_transient('wfa_reg_' . $token);
         if (!$verification) {
             wp_send_json_error('Registration session has expired. Please start again.');
+        }
+
+        // Validate username
+        if (empty($username)) {
+            wp_send_json_error('Username is required.');
+        }
+
+        // Sanitize username
+        $username = sanitize_user($username, true);
+        if (empty($username)) {
+            wp_send_json_error('Invalid username. Please use only letters, numbers, spaces, periods, hyphens, and underscores.');
         }
 
         // Validate passwords
@@ -153,9 +170,9 @@ class WFA_Registration {
             wp_send_json_error('This email is already registered.');
         }
 
-        // Create WordPress user
+        // Create unique username (add suffix if taken)
         $auto_approve = get_option('wfa_registration_auto_approve', false);
-        $username = $this->generate_username($email);
+        $username = $this->create_unique_username($username);
 
         $user_id = wp_create_user($username, $password, $email);
         if (is_wp_error($user_id)) {
@@ -298,16 +315,12 @@ class WFA_Registration {
             'workforce_id' => $user['id'],
             'wp_user_id' => $wp_user_id,
             'email' => $this->normalize_email($user['email'] ?? ''),
-            'last_name' => $this->normalize_name($user['last_name'] ?? ''),
+            'name' => trim($user['name'] ?? ''),
             'employee_id' => trim($user['employee_id'] ?? ''),
-            'phone' => trim($user['phone'] ?? ''),
-            'normalized_phone' => trim($user['normalised_phone'] ?? ''), // Already normalized by API
-            'date_of_birth' => $this->normalize_date_for_db($user['date_of_birth'] ?? ''),
             'passcode' => trim($user['passcode'] ?? ''),
-            'postcode' => $this->normalize_postcode($user['postcode'] ?? ''),
             'pending_approval' => $wp_user_id ? 0 : 1,
             'last_synced' => current_time('mysql')
-        ), array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'));
+        ), array('%d', '%d', '%s', '%s', '%s', '%s', '%d', '%s'));
     }
 
     /**
@@ -335,13 +348,45 @@ class WFA_Registration {
     }
 
     /**
-     * Generate unique username from email.
+     * Generate suggested username from name.
+     * Converts to lowercase and replaces spaces with periods.
+     *
+     * @param string $name Full name from Workforce API.
+     * @return string Suggested username.
      */
-    private function generate_username($email) {
-        $username = sanitize_user(substr($email, 0, strpos($email, '@')), true);
+    private function generate_suggested_username($name) {
+        // Convert to lowercase and replace spaces with periods
+        $username = strtolower(trim($name));
+        $username = str_replace(' ', '.', $username);
+
+        // Sanitize for WordPress username requirements
+        $username = sanitize_user($username, true);
+
+        // If empty after sanitization, fallback to random
+        if (empty($username)) {
+            $username = 'user_' . wp_rand(1000, 9999);
+        }
+
+        return $username;
+    }
+
+    /**
+     * Create unique username from suggested username.
+     * Adds numeric suffix if username already exists.
+     *
+     * @param string $suggested_username Suggested username.
+     * @return string Unique username.
+     */
+    private function create_unique_username($suggested_username) {
+        $username = $suggested_username;
 
         if (username_exists($username)) {
             $username .= '_' . wp_rand(1000, 9999);
+
+            // Keep trying if still exists (unlikely but possible)
+            while (username_exists($username)) {
+                $username = $suggested_username . '_' . wp_rand(1000, 9999);
+            }
         }
 
         return $username;
@@ -430,14 +475,8 @@ class WFA_Registration {
     }
 
     /**
-     * Normalize name.
-     */
-    private function normalize_name($name) {
-        return strtolower(trim($name));
-    }
-
-    /**
      * Normalize phone to E.164 format.
+     * Used only for verification matching - phone is not stored.
      */
     private function normalize_phone($phone) {
         // Remove all non-numeric characters
@@ -462,6 +501,7 @@ class WFA_Registration {
 
     /**
      * Normalize date from DD/MM/YYYY or other formats to YYYY-MM-DD.
+     * Used only for verification matching - date_of_birth is not stored.
      */
     private function normalize_date($date) {
         if (empty($date)) {
@@ -488,15 +528,8 @@ class WFA_Registration {
     }
 
     /**
-     * Normalize date for database storage.
-     */
-    private function normalize_date_for_db($date) {
-        $normalized = $this->normalize_date($date);
-        return $normalized ? $normalized : null;
-    }
-
-    /**
      * Normalize postcode.
+     * Used only for verification matching - postcode is not stored.
      */
     private function normalize_postcode($postcode) {
         return strtoupper(str_replace(' ', '', trim($postcode)));
