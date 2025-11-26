@@ -224,6 +224,8 @@ class WFA_Registration {
      */
     private function get_workforce_users() {
         $selected_locations = get_option('wfa_selected_locations', array());
+        error_log('WFA Registration: Selected locations: ' . print_r($selected_locations, true));
+
         if (empty($selected_locations)) {
             return new WP_Error('no_locations', 'No locations configured');
         }
@@ -231,13 +233,21 @@ class WFA_Registration {
         $all_users = array();
 
         foreach ($selected_locations as $location_id) {
+            error_log('WFA Registration: Requesting users for location_id: ' . $location_id);
             $response = $this->api->request('GET', '/api/v2/users', array('location_id' => $location_id));
+
             if (is_wp_error($response)) {
+                error_log('WFA Registration: API error for location ' . $location_id . ': ' . $response->get_error_message());
                 continue;
             }
 
+            error_log('WFA Registration: API response for location ' . $location_id . ': ' . print_r($response, true));
+
             if (isset($response['data']) && is_array($response['data'])) {
+                error_log('WFA Registration: Found ' . count($response['data']) . ' users for location ' . $location_id);
                 $all_users = array_merge($all_users, $response['data']);
+            } else {
+                error_log('WFA Registration: No data array in response for location ' . $location_id);
             }
         }
 
