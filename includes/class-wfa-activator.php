@@ -37,6 +37,18 @@ class WFA_Activator {
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
+        // Locations table (cached from API)
+        $sql = "CREATE TABLE {$prefix}locations (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            workforce_id bigint(20) NOT NULL,
+            name varchar(255) NOT NULL,
+            address text,
+            last_synced datetime,
+            PRIMARY KEY (id),
+            UNIQUE KEY workforce_id (workforce_id)
+        ) $charset_collate;";
+        dbDelta($sql);
+
         // Departments table
         $sql = "CREATE TABLE {$prefix}departments (
             id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -180,6 +192,7 @@ class WFA_Activator {
 
         $prefix = $wpdb->prefix . WFA_TABLE_PREFIX;
 
+        $wpdb->query("DROP TABLE IF EXISTS {$prefix}locations");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}departments");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}department_users");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}users");

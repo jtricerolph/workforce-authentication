@@ -32,6 +32,9 @@ class WFA_Sync {
             return new WP_Error('no_locations', 'No locations selected');
         }
 
+        // Sync locations first to get names
+        $this->sync_locations();
+
         // Get departments from API
         $departments = $this->api->get_departments($location_ids);
 
@@ -68,6 +71,80 @@ class WFA_Sync {
             'departments_synced' => $departments_synced,
             'users_synced' => $users_synced,
         );
+    }
+
+    /**
+     * Sync locations from Workforce API.
+     *
+     * @return int Number of locations synced.
+     */
+    public function sync_locations() {
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'locations';
+
+        // Get locations from API
+        $locations = $this->api->get_locations();
+
+        if (is_wp_error($locations) || empty($locations)) {
+            return 0;
+        }
+
+        $locations_synced = 0;
+
+        foreach ($locations as $location) {
+            // Check if location exists
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$table} WHERE workforce_id = %d",
+                $location['id']
+            ));
+
+            $location_data = array(
+                'workforce_id' => $location['id'],
+                'name' => $location['name'],
+                'address' => isset($location['address']) ? $location['address'] : null,
+                'last_synced' => current_time('mysql'),
+            );
+
+            if ($existing) {
+                // Update existing location
+                $wpdb->update(
+                    $table,
+                    $location_data,
+                    array('id' => $existing),
+                    array('%d', '%s', '%s', '%s'),
+                    array('%d')
+                );
+            } else {
+                // Insert new location
+                $wpdb->insert(
+                    $table,
+                    $location_data,
+                    array('%d', '%s', '%s', '%s')
+                );
+            }
+
+            $locations_synced++;
+        }
+
+        return $locations_synced;
+    }
+
+    /**
+     * Get location name by workforce location ID.
+     *
+     * @param int $location_id Workforce location ID.
+     * @return string|null Location name or null if not found.
+     */
+    public function get_location_name($location_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . WFA_TABLE_PREFIX . 'locations';
+
+        $name = $wpdb->get_var($wpdb->prepare(
+            "SELECT name FROM {$table} WHERE workforce_id = %d",
+            $location_id
+        ));
+
+        return $name ? $name : null;
     }
 
     /**
