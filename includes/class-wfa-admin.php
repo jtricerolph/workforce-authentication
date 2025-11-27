@@ -2290,12 +2290,33 @@ class WFA_Admin {
                     <p>No permissions have been registered yet.</p>
                 </div>
             <?php else: ?>
-                <?php foreach ($grouped_permissions as $app_name => $app_permissions): ?>
-                    <div style="margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #ccc; border-radius: 4px;">
-                        <h2 style="margin-top: 0;"><?php echo esc_html($app_name); ?></h2>
+                <?php
+                $app_index = 0;
+                foreach ($grouped_permissions as $app_name => $app_permissions):
+                    $app_slug = sanitize_title($app_name);
+                    $app_index++;
+                ?>
+                    <div class="wfa-app-section" data-app="<?php echo esc_attr($app_slug); ?>" style="margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #ccc; border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h2 style="margin: 0;"><?php echo esc_html($app_name); ?></h2>
+                            <div>
+                                <button type="button" class="button wfa-select-all-app" data-app="<?php echo esc_attr($app_slug); ?>">
+                                    Select All
+                                </button>
+                                <button type="button" class="button wfa-deselect-all-app" data-app="<?php echo esc_attr($app_slug); ?>" style="display: none;">
+                                    Deselect All
+                                </button>
+                                <button type="button" class="button button-primary wfa-bulk-delete-app" data-app="<?php echo esc_attr($app_slug); ?>" style="display: none; margin-left: 10px;">
+                                    Delete Selected
+                                </button>
+                            </div>
+                        </div>
                         <table class="wp-list-table widefat fixed striped">
                             <thead>
                                 <tr>
+                                    <th scope="col" style="width: 40px; text-align: center;">
+                                        <input type="checkbox" class="wfa-select-all-checkbox" data-app="<?php echo esc_attr($app_slug); ?>">
+                                    </th>
                                     <th scope="col" style="width: 200px;">Permission Key</th>
                                     <th scope="col" style="width: 200px;">Name</th>
                                     <th scope="col">Description</th>
@@ -2309,7 +2330,15 @@ class WFA_Admin {
                                     $total_usage = $perm->dept_count + $perm->user_count;
                                     $is_used = $total_usage > 0;
                                 ?>
-                                    <tr data-permission-key="<?php echo esc_attr($perm->permission_key); ?>">
+                                    <tr data-permission-key="<?php echo esc_attr($perm->permission_key); ?>" data-app="<?php echo esc_attr($app_slug); ?>">
+                                        <td style="text-align: center;">
+                                            <input type="checkbox"
+                                                   class="wfa-permission-checkbox"
+                                                   data-app="<?php echo esc_attr($app_slug); ?>"
+                                                   data-permission-key="<?php echo esc_attr($perm->permission_key); ?>"
+                                                   data-is-used="<?php echo $is_used ? '1' : '0'; ?>"
+                                                   data-usage-count="<?php echo esc_attr($total_usage); ?>">
+                                        </td>
                                         <td><code><?php echo esc_html($perm->permission_key); ?></code></td>
                                         <td><strong><?php echo esc_html($perm->permission_name); ?></strong></td>
                                         <td><?php echo esc_html($perm->permission_description); ?></td>
@@ -2349,6 +2378,134 @@ class WFA_Admin {
 
         <script>
         jQuery(document).ready(function($) {
+            // Update button visibility based on selections
+            function updateButtonsForApp(appSlug) {
+                var checked = $('.wfa-permission-checkbox[data-app="' + appSlug + '"]:checked').length;
+                var total = $('.wfa-permission-checkbox[data-app="' + appSlug + '"]').length;
+
+                if (checked > 0) {
+                    $('.wfa-bulk-delete-app[data-app="' + appSlug + '"]').show();
+                    $('.wfa-deselect-all-app[data-app="' + appSlug + '"]').show();
+                    $('.wfa-select-all-app[data-app="' + appSlug + '"]').hide();
+                } else {
+                    $('.wfa-bulk-delete-app[data-app="' + appSlug + '"]').hide();
+                    $('.wfa-deselect-all-app[data-app="' + appSlug + '"]').hide();
+                    $('.wfa-select-all-app[data-app="' + appSlug + '"]').show();
+                }
+
+                // Update select-all checkbox state
+                $('.wfa-select-all-checkbox[data-app="' + appSlug + '"]').prop('checked', checked === total && total > 0);
+            }
+
+            // Individual checkbox change
+            $('.wfa-permission-checkbox').on('change', function() {
+                var appSlug = $(this).data('app');
+                updateButtonsForApp(appSlug);
+            });
+
+            // Select all checkbox in table header
+            $('.wfa-select-all-checkbox').on('change', function() {
+                var appSlug = $(this).data('app');
+                var isChecked = $(this).prop('checked');
+                $('.wfa-permission-checkbox[data-app="' + appSlug + '"]').prop('checked', isChecked);
+                updateButtonsForApp(appSlug);
+            });
+
+            // Select All button
+            $('.wfa-select-all-app').on('click', function() {
+                var appSlug = $(this).data('app');
+                $('.wfa-permission-checkbox[data-app="' + appSlug + '"]').prop('checked', true);
+                updateButtonsForApp(appSlug);
+            });
+
+            // Deselect All button
+            $('.wfa-deselect-all-app').on('click', function() {
+                var appSlug = $(this).data('app');
+                $('.wfa-permission-checkbox[data-app="' + appSlug + '"]').prop('checked', false);
+                updateButtonsForApp(appSlug);
+            });
+
+            // Bulk delete button
+            $('.wfa-bulk-delete-app').on('click', function(e) {
+                e.preventDefault();
+
+                var button = $(this);
+                var appSlug = button.data('app');
+                var selectedCheckboxes = $('.wfa-permission-checkbox[data-app="' + appSlug + '"]:checked');
+
+                if (selectedCheckboxes.length === 0) {
+                    alert('No permissions selected.');
+                    return;
+                }
+
+                // Count used permissions
+                var usedCount = 0;
+                selectedCheckboxes.each(function() {
+                    if ($(this).data('is-used') === 1) {
+                        usedCount++;
+                    }
+                });
+
+                var confirmMessage = 'Are you sure you want to delete ' + selectedCheckboxes.length + ' permission(s)?';
+                if (usedCount > 0) {
+                    confirmMessage = 'Warning: ' + usedCount + ' of the selected permissions are currently assigned to teams/users.\n\nDeleting them will remove all assignments.\n\nAre you sure you want to delete ' + selectedCheckboxes.length + ' permission(s)?';
+                }
+
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+
+                button.prop('disabled', true).text('Deleting...');
+
+                // Collect permission keys
+                var permissionKeys = [];
+                selectedCheckboxes.each(function() {
+                    permissionKeys.push($(this).data('permission-key'));
+                });
+
+                // Delete each permission
+                var deletePromises = [];
+                $.each(permissionKeys, function(index, permissionKey) {
+                    deletePromises.push(
+                        $.ajax({
+                            url: wfaAdmin.ajax_url,
+                            type: 'POST',
+                            data: {
+                                action: 'wfa_delete_permission',
+                                nonce: wfaAdmin.nonce,
+                                permission_key: permissionKey
+                            }
+                        })
+                    );
+                });
+
+                // Wait for all deletions to complete
+                $.when.apply($, deletePromises).done(function() {
+                    // Remove deleted rows
+                    selectedCheckboxes.each(function() {
+                        var permissionKey = $(this).data('permission-key');
+                        $('tr[data-permission-key="' + permissionKey + '"]').fadeOut(300, function() {
+                            $(this).remove();
+
+                            // Check if app section is now empty
+                            if ($('.wfa-permission-checkbox[data-app="' + appSlug + '"]').length === 0) {
+                                $('.wfa-app-section[data-app="' + appSlug + '"]').fadeOut(300, function() {
+                                    $(this).remove();
+                                });
+                            }
+                        });
+                    });
+
+                    alert(permissionKeys.length + ' permission(s) deleted successfully.');
+                    button.prop('disabled', false).text('Delete Selected');
+                    updateButtonsForApp(appSlug);
+                }).fail(function() {
+                    alert('An error occurred while deleting some permissions.');
+                    button.prop('disabled', false).text('Delete Selected');
+                });
+            });
+
+            // Single delete button
             $('.wfa-delete-permission').on('click', function(e) {
                 e.preventDefault();
 
@@ -2378,8 +2535,20 @@ class WFA_Admin {
                     },
                     success: function(response) {
                         if (response.success) {
-                            button.closest('tr').fadeOut(300, function() {
+                            var $tr = button.closest('tr');
+                            var appSlug = $tr.data('app');
+
+                            $tr.fadeOut(300, function() {
                                 $(this).remove();
+
+                                // Check if app section is now empty
+                                if ($('.wfa-permission-checkbox[data-app="' + appSlug + '"]').length === 0) {
+                                    $('.wfa-app-section[data-app="' + appSlug + '"]').fadeOut(300, function() {
+                                        $(this).remove();
+                                    });
+                                } else {
+                                    updateButtonsForApp(appSlug);
+                                }
                             });
                             alert(response.data);
                         } else {
