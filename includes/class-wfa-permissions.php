@@ -188,6 +188,11 @@ class WFA_Permissions {
     public function user_has_permission($user_id, $permission_key) {
         global $wpdb;
 
+        // WordPress administrators always have all permissions
+        if (user_can($user_id, 'manage_options')) {
+            return true;
+        }
+
         // Get workforce user ID from WP user ID
         $workforce_users_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
         $workforce_user_id = $wpdb->get_var($wpdb->prepare(
@@ -233,6 +238,13 @@ class WFA_Permissions {
      */
     public function get_user_permissions($user_id) {
         global $wpdb;
+
+        // WordPress administrators have all permissions
+        if (user_can($user_id, 'manage_options')) {
+            // Return all registered permission keys
+            $permissions_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'permissions';
+            return $wpdb->get_col("SELECT permission_key FROM $permissions_table");
+        }
 
         // Get workforce user ID from WP user ID
         $workforce_users_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'users';
