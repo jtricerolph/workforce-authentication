@@ -43,6 +43,7 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_grant_user_permission', array($this, 'ajax_grant_user_permission'));
         add_action('wp_ajax_wfa_revoke_user_permission', array($this, 'ajax_revoke_user_permission'));
         add_action('wp_ajax_wfa_get_selected_locations', array($this, 'ajax_get_selected_locations'));
+        add_action('wp_ajax_wfa_delete_permission', array($this, 'ajax_delete_permission'));
     }
 
     /**
@@ -106,6 +107,15 @@ class WFA_Admin {
             'manage_options',
             'workforce-auth-users',
             array($this, 'render_users_page')
+        );
+
+        add_submenu_page(
+            'workforce-auth',
+            'Permissions',
+            'Permissions',
+            'manage_options',
+            'workforce-auth-permissions',
+            array($this, 'render_permissions_page')
         );
     }
 
@@ -2239,5 +2249,181 @@ class WFA_Admin {
 
         $locations = get_option('wfa_selected_locations', array());
         wp_send_json_success($locations);
+    }
+
+    /**
+     * Render permissions management page.
+     */
+    public function render_permissions_page() {
+        global $wpdb;
+        $permissions_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'permissions';
+        $dept_perms_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'department_permissions';
+        $user_perms_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'user_permissions';
+
+        // Get all permissions with usage counts
+        $permissions = $wpdb->get_results("
+            SELECT
+                p.*,
+                (SELECT COUNT(*) FROM $dept_perms_table WHERE permission_key = p.permission_key) as dept_count,
+                (SELECT COUNT(*) FROM $user_perms_table WHERE permission_key = p.permission_key) as user_count
+            FROM $permissions_table p
+            ORDER BY p.app_name ASC, p.permission_name ASC
+        ");
+
+        // Group permissions by app
+        $grouped_permissions = array();
+        foreach ($permissions as $perm) {
+            $app = !empty($perm->app_name) ? $perm->app_name : 'Other';
+            if (!isset($grouped_permissions[$app])) {
+                $grouped_permissions[$app] = array();
+            }
+            $grouped_permissions[$app][] = $perm;
+        }
+
+        ?>
+        <div class="wrap">
+            <h1>Permissions Management</h1>
+            <p>Manage permissions registered by applications. You can remove unused permissions that were registered by plugins that are no longer active.</p>
+
+            <?php if (empty($permissions)): ?>
+                <div class="notice notice-info">
+                    <p>No permissions have been registered yet.</p>
+                </div>
+            <?php else: ?>
+                <?php foreach ($grouped_permissions as $app_name => $app_permissions): ?>
+                    <div style="margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #ccc; border-radius: 4px;">
+                        <h2 style="margin-top: 0;"><?php echo esc_html($app_name); ?></h2>
+                        <table class="wp-list-table widefat fixed striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col" style="width: 200px;">Permission Key</th>
+                                    <th scope="col" style="width: 200px;">Name</th>
+                                    <th scope="col">Description</th>
+                                    <th scope="col" style="width: 100px; text-align: center;">Teams</th>
+                                    <th scope="col" style="width: 100px; text-align: center;">Users</th>
+                                    <th scope="col" style="width: 100px; text-align: center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($app_permissions as $perm):
+                                    $total_usage = $perm->dept_count + $perm->user_count;
+                                    $is_used = $total_usage > 0;
+                                ?>
+                                    <tr data-permission-key="<?php echo esc_attr($perm->permission_key); ?>">
+                                        <td><code><?php echo esc_html($perm->permission_key); ?></code></td>
+                                        <td><strong><?php echo esc_html($perm->permission_name); ?></strong></td>
+                                        <td><?php echo esc_html($perm->permission_description); ?></td>
+                                        <td style="text-align: center;">
+                                            <?php if ($perm->dept_count > 0): ?>
+                                                <span class="dashicons dashicons-groups" title="<?php echo esc_attr($perm->dept_count); ?> team(s)"></span>
+                                                <?php echo esc_html($perm->dept_count); ?>
+                                            <?php else: ?>
+                                                <span style="color: #999;">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td style="text-align: center;">
+                                            <?php if ($perm->user_count > 0): ?>
+                                                <span class="dashicons dashicons-admin-users" title="<?php echo esc_attr($perm->user_count); ?> user(s)"></span>
+                                                <?php echo esc_html($perm->user_count); ?>
+                                            <?php else: ?>
+                                                <span style="color: #999;">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td style="text-align: center;">
+                                            <button type="button"
+                                                    class="button button-small wfa-delete-permission"
+                                                    data-permission-key="<?php echo esc_attr($perm->permission_key); ?>"
+                                                    data-is-used="<?php echo $is_used ? '1' : '0'; ?>"
+                                                    data-usage-count="<?php echo esc_attr($total_usage); ?>">
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            $('.wfa-delete-permission').on('click', function(e) {
+                e.preventDefault();
+
+                var button = $(this);
+                var permissionKey = button.data('permission-key');
+                var isUsed = button.data('is-used') === 1;
+                var usageCount = button.data('usage-count');
+
+                var confirmMessage = 'Are you sure you want to delete this permission?';
+                if (isUsed) {
+                    confirmMessage = 'This permission is currently assigned to ' + usageCount + ' team(s) and/or user(s). Deleting it will remove all assignments. Are you sure?';
+                }
+
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+
+                button.prop('disabled', true).text('Deleting...');
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_delete_permission',
+                        nonce: wfaAdmin.nonce,
+                        permission_key: permissionKey
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            button.closest('tr').fadeOut(300, function() {
+                                $(this).remove();
+                            });
+                            alert(response.data);
+                        } else {
+                            alert('Error: ' + response.data);
+                            button.prop('disabled', false).text('Delete');
+                        }
+                    },
+                    error: function() {
+                        alert('An error occurred. Please try again.');
+                        button.prop('disabled', false).text('Delete');
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+
+    /**
+     * AJAX: Delete permission.
+     */
+    public function ajax_delete_permission() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $permission_key = isset($_POST['permission_key']) ? sanitize_text_field($_POST['permission_key']) : '';
+
+        if (empty($permission_key)) {
+            wp_send_json_error('Permission key is required');
+        }
+
+        global $wpdb;
+        $permissions_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'permissions';
+        $dept_perms_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'department_permissions';
+        $user_perms_table = $wpdb->prefix . WFA_TABLE_PREFIX . 'user_permissions';
+
+        // Delete from all related tables
+        $wpdb->delete($dept_perms_table, array('permission_key' => $permission_key), array('%s'));
+        $wpdb->delete($user_perms_table, array('permission_key' => $permission_key), array('%s'));
+        $wpdb->delete($permissions_table, array('permission_key' => $permission_key), array('%s'));
+
+        wp_send_json_success('Permission deleted successfully');
     }
 }
