@@ -17,6 +17,8 @@ class WFA_Activator {
     public static function activate() {
         self::create_tables();
         self::create_default_options();
+        self::create_registration_page();
+        self::create_login_page();
     }
 
     /**
@@ -174,13 +176,91 @@ class WFA_Activator {
             'wfa_registration_rate_limit' => 50,
             'wfa_require_login' => false,
             'wfa_login_page' => '',
+            'wfa_login_page_id' => 0,
             'wfa_register_page' => '',
+            'wfa_register_page_id' => 0,
         );
 
         foreach ($defaults as $key => $value) {
             if (false === get_option($key)) {
                 add_option($key, $value);
             }
+        }
+    }
+
+    /**
+     * Create registration page with shortcode.
+     */
+    private static function create_registration_page() {
+        // Check if page already exists
+        $existing_page_id = get_option('wfa_register_page_id');
+        if ($existing_page_id && get_post($existing_page_id)) {
+            return; // Page already exists
+        }
+
+        // Check if a page with the register slug exists
+        $existing_page = get_page_by_path('register');
+        if ($existing_page) {
+            // Use existing page
+            update_option('wfa_register_page_id', $existing_page->ID);
+            update_option('wfa_register_page', '/register');
+            return;
+        }
+
+        // Create new registration page
+        $page_data = array(
+            'post_title'    => 'Staff Registration',
+            'post_content'  => '[wfa_register]',
+            'post_status'   => 'publish',
+            'post_type'     => 'page',
+            'post_name'     => 'register',
+            'comment_status' => 'closed',
+            'ping_status'   => 'closed',
+        );
+
+        $page_id = wp_insert_post($page_data);
+
+        if ($page_id && !is_wp_error($page_id)) {
+            update_option('wfa_register_page_id', $page_id);
+            update_option('wfa_register_page', '/register');
+        }
+    }
+
+    /**
+     * Create login page with shortcode.
+     */
+    private static function create_login_page() {
+        // Check if page already exists
+        $existing_page_id = get_option('wfa_login_page_id');
+        if ($existing_page_id && get_post($existing_page_id)) {
+            return; // Page already exists
+        }
+
+        // Check if a page with the login slug exists
+        $existing_page = get_page_by_path('login');
+        if ($existing_page) {
+            // Use existing page
+            update_option('wfa_login_page_id', $existing_page->ID);
+            update_option('wfa_login_page', '/login');
+            return;
+        }
+
+        // Create new login page
+        $page_data = array(
+            'post_title'    => 'Staff Login',
+            'post_content'  => '[wfa_login]',
+            'post_status'   => 'publish',
+            'post_type'     => 'page',
+            'post_name'     => 'login',
+            'comment_status' => 'closed',
+            'ping_status'   => 'closed',
+        );
+
+        $page_id = wp_insert_post($page_data);
+
+        if ($page_id && !is_wp_error($page_id)) {
+            update_option('wfa_login_page_id', $page_id);
+            update_option('wfa_login_page', '/login');
         }
     }
 
@@ -200,6 +280,18 @@ class WFA_Activator {
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}permissions");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}department_permissions");
         $wpdb->query("DROP TABLE IF EXISTS {$prefix}user_permissions");
+
+        // Delete registration page if it was created by the plugin
+        $register_page_id = get_option('wfa_register_page_id');
+        if ($register_page_id) {
+            wp_delete_post($register_page_id, true);
+        }
+
+        // Delete login page if it was created by the plugin
+        $login_page_id = get_option('wfa_login_page_id');
+        if ($login_page_id) {
+            wp_delete_post($login_page_id, true);
+        }
 
         // Delete all options
         $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'wfa_%'");
