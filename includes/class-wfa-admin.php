@@ -42,6 +42,7 @@ class WFA_Admin {
         add_action('wp_ajax_wfa_get_user_permissions', array($this, 'ajax_get_user_permissions'));
         add_action('wp_ajax_wfa_grant_user_permission', array($this, 'ajax_grant_user_permission'));
         add_action('wp_ajax_wfa_revoke_user_permission', array($this, 'ajax_revoke_user_permission'));
+        add_action('wp_ajax_wfa_get_selected_locations', array($this, 'ajax_get_selected_locations'));
     }
 
     /**
@@ -397,7 +398,12 @@ class WFA_Admin {
                 </tr>
                 <tr>
                     <th scope="row">Selected Locations</th>
-                    <td><?php echo count($locations); ?> location(s)</td>
+                    <td>
+                        <div id="wfa-current-locations">
+                            <?php echo count($locations); ?> location(s) selected
+                        </div>
+                        <button type="button" class="button" id="wfa-update-locations" style="margin-top: 10px;">Update Locations</button>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row">Last Sync</th>
@@ -445,6 +451,30 @@ class WFA_Admin {
             </p>
         </div>
 
+        <!-- Update Locations Modal -->
+        <div id="wfa-locations-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; justify-content: center; align-items: center;">
+            <div style="background: #fff; padding: 30px; border-radius: 4px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+                <h2>Update Location Selection</h2>
+                <p>Select which locations to include in this integration:</p>
+
+                <div id="wfa-locations-loading" style="margin: 20px 0;">
+                    <p>Loading locations... <span class="spinner is-active" style="float: none;"></span></p>
+                </div>
+
+                <form id="wfa-update-locations-form" style="display: none;">
+                    <div id="wfa-update-locations-container" style="max-height: 400px; overflow-y: auto; margin: 20px 0;"></div>
+
+                    <div id="wfa-update-locations-result"></div>
+
+                    <p style="text-align: right; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                        <button type="button" class="button wfa-close-locations-modal" style="margin-right: 10px;">Cancel</button>
+                        <button type="submit" class="button button-primary">Save Locations</button>
+                        <span class="spinner"></span>
+                    </p>
+                </form>
+            </div>
+        </div>
+
         <script>
         jQuery(document).ready(function($) {
             // Toggle frequency field based on checkbox
@@ -453,6 +483,130 @@ class WFA_Admin {
                     $('#wfa-sync-frequency-row').show();
                 } else {
                     $('#wfa-sync-frequency-row').hide();
+                }
+            });
+
+            // Update locations button
+            $('#wfa-update-locations').on('click', function() {
+                $('#wfa-locations-modal').css('display', 'flex');
+                $('#wfa-locations-loading').show();
+                $('#wfa-update-locations-form').hide();
+                $('#wfa-update-locations-result').html('');
+
+                // Fetch locations from API
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_get_locations',
+                        nonce: wfaAdmin.nonce
+                    },
+                    success: function(response) {
+                        $('#wfa-locations-loading').hide();
+                        if (response.success) {
+                            // Get currently selected locations
+                            $.ajax({
+                                url: wfaAdmin.ajax_url,
+                                type: 'POST',
+                                data: {
+                                    action: 'wfa_get_selected_locations',
+                                    nonce: wfaAdmin.nonce
+                                },
+                                success: function(selectedResponse) {
+                                    var selectedIds = selectedResponse.success ? selectedResponse.data : [];
+                                    var html = '';
+
+                                    $.each(response.data, function(i, location) {
+                                        var isChecked = selectedIds.indexOf(location.id) !== -1 ? ' checked' : '';
+                                        html += '<label style="display: block; padding: 10px; margin-bottom: 5px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; cursor: pointer;">';
+                                        html += '<input type="checkbox" name="locations[]" value="' + location.id + '"' + isChecked + '> ';
+                                        html += '<strong>' + location.name + '</strong>';
+                                        if (location.address) {
+                                            html += '<br><small style="color: #666; margin-left: 20px;">' + location.address + '</small>';
+                                        }
+                                        html += '</label>';
+                                    });
+
+                                    $('#wfa-update-locations-container').html(html);
+                                    $('#wfa-update-locations-form').show();
+                                }
+                            });
+                        } else {
+                            $('#wfa-update-locations-result').html('<div class="notice notice-error inline"><p>' + response.data + '</p></div>');
+                            $('#wfa-update-locations-form').show();
+                        }
+                    },
+                    error: function() {
+                        $('#wfa-locations-loading').hide();
+                        $('#wfa-update-locations-result').html('<div class="notice notice-error inline"><p>Failed to load locations</p></div>');
+                        $('#wfa-update-locations-form').show();
+                    }
+                });
+            });
+
+            // Save updated locations
+            $('#wfa-update-locations-form').on('submit', function(e) {
+                e.preventDefault();
+
+                var $form = $(this);
+                var $button = $form.find('button[type="submit"]');
+                var $spinner = $form.find('.spinner');
+                var locations = [];
+
+                $form.find('input[name="locations[]"]:checked').each(function() {
+                    locations.push($(this).val());
+                });
+
+                if (locations.length === 0) {
+                    $('#wfa-update-locations-result').html('<div class="notice notice-error inline"><p>Please select at least one location</p></div>');
+                    return;
+                }
+
+                $button.prop('disabled', true);
+                $spinner.addClass('is-active');
+
+                $.ajax({
+                    url: wfaAdmin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wfa_save_locations',
+                        nonce: wfaAdmin.nonce,
+                        locations: locations
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#wfa-update-locations-result').html('<div class="notice notice-success inline"><p>' + response.data + '</p></div>');
+
+                            // Update the display
+                            $('#wfa-current-locations').html(locations.length + ' location(s) selected');
+
+                            // Close modal after 1.5 seconds
+                            setTimeout(function() {
+                                $('#wfa-locations-modal').hide();
+
+                                // Show message to re-sync
+                                if (confirm('Locations updated! Would you like to re-sync departments now?')) {
+                                    $('#wfa-resync-departments').trigger('click');
+                                }
+                            }, 1500);
+                        } else {
+                            $('#wfa-update-locations-result').html('<div class="notice notice-error inline"><p>' + response.data + '</p></div>');
+                        }
+                    },
+                    error: function() {
+                        $('#wfa-update-locations-result').html('<div class="notice notice-error inline"><p>Failed to save locations</p></div>');
+                    },
+                    complete: function() {
+                        $button.prop('disabled', false);
+                        $spinner.removeClass('is-active');
+                    }
+                });
+            });
+
+            // Close modal
+            $('.wfa-close-locations-modal, #wfa-locations-modal').on('click', function(e) {
+                if (e.target === this) {
+                    $('#wfa-locations-modal').hide();
                 }
             });
         });
@@ -2071,5 +2225,19 @@ class WFA_Admin {
         );
 
         wp_send_json_success('User resynced successfully');
+    }
+
+    /**
+     * AJAX: Get selected locations.
+     */
+    public function ajax_get_selected_locations() {
+        check_ajax_referer('wfa_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        $locations = get_option('wfa_selected_locations', array());
+        wp_send_json_success($locations);
     }
 }
