@@ -326,6 +326,169 @@ content.publish        - Publish content
 content.delete         - Delete content
 ```
 
+## Common Pitfalls & Troubleshooting
+
+### Error: "Cannot use object of type WFA_Permissions as array"
+
+**Problem:** Trying to register permissions using array syntax instead of the object method.
+
+**Incorrect:**
+```php
+add_action('wfa_register_permissions', function($permissions) {
+    // ❌ WRONG - This will cause a fatal error
+    $permissions['my_app.view'] = array(
+        'name' => 'View My App',
+        'description' => 'Allows viewing',
+        'app_name' => 'My App'
+    );
+});
+```
+
+**Correct:**
+```php
+add_action('wfa_register_permissions', function($permissions) {
+    // ✅ CORRECT - Use the register_permission() method
+    $permissions->register_permission(
+        'my_app.view',           // Permission key
+        'View My App',           // Permission name
+        'Allows viewing',        // Description
+        'My App'                 // App name
+    );
+});
+```
+
+### Error: "Call to undefined method WFA_Permissions::register()"
+
+**Problem:** Using the wrong method name. The method is `register_permission()` not `register()`.
+
+**Incorrect:**
+```php
+add_action('wfa_register_permissions', function($permissions) {
+    // ❌ WRONG - Method name is incorrect
+    $permissions->register(
+        'my_app.view',
+        'View My App',
+        'Description',
+        'My App'
+    );
+});
+```
+
+**Correct:**
+```php
+add_action('wfa_register_permissions', function($permissions) {
+    // ✅ CORRECT - Use register_permission()
+    $permissions->register_permission(
+        'my_app.view',
+        'View My App',
+        'Description',
+        'My App'
+    );
+});
+```
+
+### WFA_Permissions API Reference
+
+The `$permissions` object passed to the `wfa_register_permissions` hook has these methods:
+
+```php
+// Register a new permission
+$permissions->register_permission(
+    string $permission_key,        // Required: Unique key (e.g., 'my_app.view')
+    string $permission_name,       // Required: Display name
+    string $permission_description, // Optional: Description (default: '')
+    string $app_name               // Optional: App/module name (default: '')
+): bool|WP_Error
+
+// Get all registered permissions (optionally filtered by app)
+$permissions->get_permissions(string $app_name = ''): array
+
+// Grant permission to a department
+$permissions->grant_permission(
+    int $department_id,
+    string $permission_key
+): bool|WP_Error
+
+// Revoke permission from a department
+$permissions->revoke_permission(
+    int $department_id,
+    string $permission_key
+): bool
+
+// Check if user has permission
+$permissions->user_has_permission(
+    int $user_id,
+    string $permission_key
+): bool
+
+// Get all permissions for a user
+$permissions->get_user_permissions(int $user_id): array
+
+// Get all permissions for a department
+$permissions->get_department_permissions(int $department_id): array
+
+// Get departments that have a permission
+$permissions->get_departments_with_permission(string $permission_key): array
+
+// Delete a permission completely
+$permissions->delete_permission(string $permission_key): bool
+```
+
+### Parameter Count Errors
+
+**Problem:** Passing too many or too few parameters.
+
+The `register_permission()` method accepts exactly **4 parameters**:
+1. `$permission_key` (required)
+2. `$permission_name` (required)
+3. `$permission_description` (optional, defaults to '')
+4. `$app_name` (optional, defaults to '')
+
+**Incorrect:**
+```php
+// ❌ WRONG - Too many parameters (5th parameter doesn't exist)
+$permissions->register_permission(
+    'my_app.view',
+    'View My App',
+    'Description',
+    'My App',
+    'housekeeping'  // ← This parameter doesn't exist!
+);
+```
+
+**Correct:**
+```php
+// ✅ CORRECT - Only 4 parameters
+$permissions->register_permission(
+    'my_app.view',
+    'View My App',
+    'Description',
+    'My App'
+);
+```
+
+### WordPress Administrators Always Have Permission
+
+Note that users with the `manage_options` capability (WordPress administrators) automatically pass **all** permission checks, regardless of their department memberships or assigned permissions.
+
+```php
+// This will return true for administrators, even without explicit permission grants
+wfa_user_can('my_app.view'); // true for admins
+```
+
+### Checking If WFA Functions Exist
+
+Always check if Workforce Authentication functions exist before using them:
+
+```php
+if (function_exists('wfa_user_can')) {
+    $has_permission = wfa_user_can('my_app.view');
+} else {
+    // Fallback if WFA is not active
+    $has_permission = current_user_can('edit_posts');
+}
+```
+
 ## Support
 
 For issues or questions about the permissions system, please open an issue on the GitHub repository.
