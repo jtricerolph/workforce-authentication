@@ -809,9 +809,33 @@ class WFA_Admin {
      * Render teams page.
      */
     public function render_teams_page() {
+        global $wpdb;
         $departments = $this->sync->get_departments();
         $selected_locations = get_option('wfa_selected_locations', array());
         $last_sync = get_option('wfa_last_sync', 'Never');
+
+        // Group departments by location
+        $grouped_departments = array();
+        foreach ($departments as $dept) {
+            $location_name = $this->sync->get_location_name($dept->location_id);
+            if (!$location_name) {
+                $location_name = 'Location ' . $dept->location_id;
+            }
+
+            if (!isset($grouped_departments[$dept->location_id])) {
+                $grouped_departments[$dept->location_id] = array(
+                    'name' => $location_name,
+                    'departments' => array()
+                );
+            }
+
+            $grouped_departments[$dept->location_id]['departments'][] = $dept;
+        }
+
+        // Sort locations by name
+        uasort($grouped_departments, function($a, $b) {
+            return strcmp($a['name'], $b['name']);
+        });
 
         ?>
         <div class="wrap">
@@ -834,57 +858,65 @@ class WFA_Admin {
                     <p>No teams/departments synced yet. Please complete the setup or click "Re-sync Departments" above.</p>
                 </div>
             <?php else: ?>
-                <table class="wp-list-table widefat fixed striped">
-                    <thead>
-                        <tr>
-                            <th scope="col" style="width: 50px;">ID</th>
-                            <th scope="col">Team Name</th>
-                            <th scope="col" style="width: 100px;">Location ID</th>
-                            <th scope="col" style="width: 100px;">Colour</th>
-                            <th scope="col" style="width: 120px;">Staff Count</th>
-                            <th scope="col" style="width: 120px;">Managers</th>
-                            <th scope="col" style="width: 180px;">Last Synced</th>
-                            <th scope="col" style="width: 100px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($departments as $dept):
-                            $users = $this->sync->get_department_users($dept->id);
-                            $staff_count = count($users);
-                            $managers_count = count(array_filter($users, function($u) { return $u->is_manager == 1; }));
-                        ?>
-                            <tr>
-                                <td><?php echo esc_html($dept->workforce_id); ?></td>
-                                <td>
-                                    <strong><?php echo esc_html($dept->name); ?></strong>
-                                    <?php if ($dept->export_name): ?>
-                                        <br><small>Export: <?php echo esc_html($dept->export_name); ?></small>
-                                    <?php endif; ?>
-                                </td>
-                                <td><?php echo esc_html($dept->location_id); ?></td>
-                                <td>
-                                    <?php if ($dept->colour): ?>
-                                        <span style="display: inline-block; width: 20px; height: 20px; background: <?php echo esc_attr($dept->colour); ?>; border: 1px solid #ddd; border-radius: 3px; vertical-align: middle;"></span>
-                                        <code style="margin-left: 5px;"><?php echo esc_html($dept->colour); ?></code>
-                                    <?php else: ?>
-                                        <span style="color: #999;">—</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td><?php echo $staff_count; ?></td>
-                                <td><?php echo $managers_count; ?></td>
-                                <td><?php echo $dept->last_synced ? esc_html($dept->last_synced) : '<span style="color: #999;">—</span>'; ?></td>
-                                <td>
-                                    <button type="button" class="button button-small wfa-view-team-users" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
-                                        View Staff
-                                    </button>
-                                    <button type="button" class="button button-small wfa-manage-permissions" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
-                                        Permissions
-                                    </button>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <?php foreach ($grouped_departments as $location_id => $location_data): ?>
+                    <div style="margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #ccc; border-radius: 4px;">
+                        <h2 style="margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #0073aa;">
+                            <?php echo esc_html($location_data['name']); ?>
+                            <span style="font-size: 14px; font-weight: normal; color: #666;">
+                                (<?php echo count($location_data['departments']); ?> team<?php echo count($location_data['departments']) != 1 ? 's' : ''; ?>)
+                            </span>
+                        </h2>
+                        <table class="wp-list-table widefat fixed striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col" style="width: 50px;">ID</th>
+                                    <th scope="col">Team Name</th>
+                                    <th scope="col" style="width: 100px;">Colour</th>
+                                    <th scope="col" style="width: 120px;">Staff Count</th>
+                                    <th scope="col" style="width: 120px;">Managers</th>
+                                    <th scope="col" style="width: 180px;">Last Synced</th>
+                                    <th scope="col" style="width: 100px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($location_data['departments'] as $dept):
+                                    $users = $this->sync->get_department_users($dept->id);
+                                    $staff_count = count($users);
+                                    $managers_count = count(array_filter($users, function($u) { return $u->is_manager == 1; }));
+                                ?>
+                                    <tr>
+                                        <td><?php echo esc_html($dept->workforce_id); ?></td>
+                                        <td>
+                                            <strong><?php echo esc_html($dept->name); ?></strong>
+                                            <?php if ($dept->export_name): ?>
+                                                <br><small>Export: <?php echo esc_html($dept->export_name); ?></small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if ($dept->colour): ?>
+                                                <span style="display: inline-block; width: 20px; height: 20px; background: <?php echo esc_attr($dept->colour); ?>; border: 1px solid #ddd; border-radius: 3px; vertical-align: middle;"></span>
+                                                <code style="margin-left: 5px;"><?php echo esc_html($dept->colour); ?></code>
+                                            <?php else: ?>
+                                                <span style="color: #999;">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo $staff_count; ?></td>
+                                        <td><?php echo $managers_count; ?></td>
+                                        <td><?php echo $dept->last_synced ? esc_html($dept->last_synced) : '<span style="color: #999;">—</span>'; ?></td>
+                                        <td>
+                                            <button type="button" class="button button-small wfa-view-team-users" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
+                                                View Staff
+                                            </button>
+                                            <button type="button" class="button button-small wfa-manage-permissions" data-dept-id="<?php echo esc_attr($dept->id); ?>" data-dept-name="<?php echo esc_attr($dept->name); ?>">
+                                                Permissions
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
 
                 <div id="wfa-team-users-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; justify-content: center; align-items: center;">
                     <div style="background: #fff; padding: 30px; border-radius: 4px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
